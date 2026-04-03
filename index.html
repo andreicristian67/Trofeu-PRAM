@@ -3,21 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Examen PRAM - ID Crescător</title>
+    <title>Examen PRAM - Auto-Next</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
     <style>
         :root { --dark: #2c3e50; --blue: #3498db; --green: #27ae60; --red: #e74c3c; --orange: #f39c12; --gray: #ecf0f1; }
         body { font-family: 'Segoe UI', sans-serif; background: #f4f7f6; margin: 0; padding: 5px; display: flex; flex-direction: column; align-items: center; }
         
-        /* Navigarea de sus - MAI MICĂ */
         .nav-container { width: 100%; max-width: 800px; background: var(--dark); padding: 5px; border-radius: 8px; margin-bottom: 10px; }
-        .nav-grid { display: grid; grid-template-columns: repeat(15, 1fr); gap: 3px; } /* 15 pe rând pt a fi mai mici */
+        .nav-grid { display: grid; grid-template-columns: repeat(15, 1fr); gap: 3px; }
         .nav-item { padding: 4px 0; text-align: center; background: rgba(255,255,255,0.2); color: white; border-radius: 3px; cursor: pointer; font-size: 10px; font-weight: bold; }
         .nav-item.active { background: var(--orange) !important; outline: 1px solid white; }
         .nav-item.correct { background: var(--green) !important; }
         .nav-item.wrong { background: var(--red) !important; }
 
-        /* Cardul de Quiz */
         .quiz-card { background: white; width: 100%; max-width: 800px; padding: 15px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); box-sizing: border-box; }
         .stats-header { display: flex; justify-content: space-between; font-weight: bold; font-size: 13px; margin-bottom: 10px; color: var(--dark); border-bottom: 1px solid #eee; padding-bottom: 8px; }
         
@@ -31,18 +29,17 @@
         .btn-prev { background: #95a5a6; }
         .btn-action { background: var(--green); }
 
-        .history-panel { width: 100%; max-width: 800px; margin-top: 15px; background: white; padding: 10px; border-radius: 8px; font-size: 13px; }
-        .history-item { display: flex; justify-content: space-between; padding: 5px; border-bottom: 1px solid #eee; }
-
         #startScreen, #resultScreen { position: fixed; inset: 0; background: white; z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 20px; }
+        .history-panel { width: 100%; max-width: 800px; margin-top: 15px; background: white; padding: 10px; border-radius: 8px; font-size: 13px; }
     </style>
 </head>
 <body>
 
 <div id="startScreen">
     <h1>📝 Examen PRAM</h1>
-    <p>45 Întrebări sortate după ID | 150 Puncte</p>
-    <button onclick="initExam()" style="background:var(--green); padding: 15px 40px; font-size:18px; border-radius: 10px;">START EXAMEN</button>
+    <p>45 Întrebări | 150 Puncte</p>
+    <div id="loadStatus" style="margin-bottom:20px; color: red;">Se încarcă baza de date...</div>
+    <button id="startBtn" disabled onclick="initExam()" style="background:#ccc; padding: 15px 40px; font-size:18px; border-radius: 10px; cursor:not-allowed;">START EXAMEN</button>
 </div>
 
 <div class="nav-container">
@@ -54,7 +51,7 @@
         <span id="scoreDisplay">SCOR: 0 / 150</span>
         <span id="qMeta" style="color:var(--blue)">-</span>
     </div>
-    <div id="qText" class="q-text">Se încarcă...</div>
+    <div id="qText" class="q-text">Alege un ID sau pornește examenul...</div>
     <div class="options-container" id="optionsArea"></div>
     
     <div class="controls">
@@ -64,7 +61,7 @@
 </div>
 
 <div class="history-panel">
-    <strong>📜 Istoric:</strong>
+    <strong>📜 Istoric Scoruri:</strong>
     <div id="historyList"></div>
 </div>
 
@@ -76,31 +73,43 @@
 
 <script>
     let db = [], exam = [], currentIdx = 0, currentScore = 0;
-    let answers = {}, results = {}; 
+    let answers = {}, results = {}, isPaused = false; 
 
+    // ÎNCĂRCARE BAZA DE DATE
     Papa.parse("baza_date.csv", {
-        download: true, header: true, skipEmptyLines: true,
-        complete: function(r) { 
-            db = r.data; 
-            // Curățăm spațiile goale din ID-uri pentru sortare corectă
-            db.forEach(q => q.ID = parseInt(q.ID));
-            loadHistory(); 
+        download: true,
+        header: true,
+        skipEmptyLines: true,
+        complete: function(r) {
+            if (r.data.length > 0) {
+                db = r.data;
+                document.getElementById('loadStatus').innerText = "Baza de date încărcată: " + db.length + " întrebări.";
+                document.getElementById('loadStatus').style.color = "green";
+                const startBtn = document.getElementById('startBtn');
+                startBtn.disabled = false;
+                startBtn.style.background = "var(--green)";
+                startBtn.style.cursor = "pointer";
+                loadHistory();
+            } else {
+                document.getElementById('loadStatus').innerText = "Eroare: Fișierul CSV este gol!";
+            }
+        },
+        error: function() {
+            document.getElementById('loadStatus').innerText = "Eroare: Nu am găsit baza_date.csv!";
         }
     });
 
     function initExam() {
-        const filter = (c) => db.filter(q => q.Categorie && q.Categorie.toUpperCase().includes(c)).sort(() => 0.5 - Math.random());
+        const getCat = (c) => db.filter(q => q.Categorie && q.Categorie.toString().toUpperCase().includes(c)).sort(() => 0.5 - Math.random());
         
         let pool = [
-            ...filter("PSI").slice(0, 2),
-            ...filter("LEGISLATIE").slice(0, 2),
-            ...filter("MUNCII").slice(0, 2),
-            ...filter("PROFESIONAL").slice(0, 39)
+            ...getCat("PSI").slice(0, 2),
+            ...getCat("LEGISLATIE").slice(0, 2),
+            ...getCat("MUNCII").slice(0, 2),
+            ...getCat("PROFESIONAL").slice(0, 39)
         ];
 
-        // SORTARE DUPĂ ID CRESCĂTOR
-        exam = pool.sort((a, b) => a.ID - b.ID);
-
+        exam = pool.sort((a, b) => parseInt(a.ID) - parseInt(b.ID));
         document.getElementById('startScreen').style.display = 'none';
         buildNav();
         render();
@@ -113,7 +122,8 @@
 
     function render() {
         const q = exam[currentIdx];
-        // AFIȘARE ID ÎN METADATE
+        if(!q) return;
+        
         document.getElementById('qMeta').innerText = `ID: ${q.ID} | ${q.Categorie} (${q.Punctaj}p)`;
         document.getElementById('qText').innerText = q.Intrebare;
         document.getElementById('scoreDisplay').innerText = `SCOR: ${currentScore} / 150`;
@@ -122,7 +132,7 @@
         area.innerHTML = "";
         ['A', 'B', 'C', 'D', 'E'].forEach(l => {
             const val = q['Var_' + l];
-            if(val && val.trim() !== "" && val.trim() !== "-") {
+            if(val && val.toString().trim() !== "" && val.toString().trim() !== "-") {
                 area.innerHTML += `
                     <div class="opt-btn ${ (answers[currentIdx] || "").includes(l) ? 'selected' : '' }" 
                          onclick="toggleOpt(this, '${l}')" id="opt-${l}">
@@ -132,10 +142,18 @@
         });
 
         updateNavStyles();
+        isPaused = false;
 
         const btn = document.getElementById('mainBtn');
-        btn.innerText = results[currentIdx] ? (currentIdx === 44 ? "FINALIZEAZĂ" : "URMĂTOAREA") : "VERIFICĂ";
-        btn.style.background = results[currentIdx] ? "var(--blue)" : "var(--green)";
+        btn.disabled = false;
+        if(results[currentIdx]) {
+            btn.innerText = (currentIdx === 44 ? "FINALIZEAZĂ" : "URMĂTOAREA");
+            btn.style.background = "var(--blue)";
+            showInstantFeedback(q.Raspuns_Corect.toString().toUpperCase().replace(/\s/g, ''), answers[currentIdx] || "");
+        } else {
+            btn.innerText = "VERIFICĂ";
+            btn.style.background = "var(--green)";
+        }
     }
 
     function updateNavStyles() {
@@ -148,30 +166,44 @@
     }
 
     function toggleOpt(el, l) {
-        if(results[currentIdx]) return; 
+        if(results[currentIdx] || isPaused) return; 
         el.classList.toggle('selected');
         let current = answers[currentIdx] || "";
         answers[currentIdx] = current.includes(l) ? current.replace(l, '') : (current + l).split('').sort().join('');
     }
 
     function handleAction() {
+        if(isPaused) return;
         const btn = document.getElementById('mainBtn');
+        const q = exam[currentIdx];
+
         if(btn.innerText === "VERIFICĂ") {
-            const q = exam[currentIdx];
-            const correct = q.Raspuns_Corect.toUpperCase().replace(/\s/g, '');
+            const correct = q.Raspuns_Corect.toString().toUpperCase().replace(/\s/g, '');
             const user = answers[currentIdx] || "";
             
             if(user === correct) {
                 results[currentIdx] = "correct";
                 currentScore += parseInt(q.Punctaj);
+                showInstantFeedback(correct, user);
+                updateNavStyles();
+                
+                // --- LOGICA AUTO-NEXT 2 SECUNDE ---
+                if (currentIdx < 44) {
+                    isPaused = true;
+                    btn.innerText = "CORECT! SE TRECE LA URMĂTOAREA...";
+                    btn.style.background = "var(--orange)";
+                    setTimeout(() => { move(1); }, 2000);
+                } else {
+                    btn.innerText = "FINALIZEAZĂ";
+                    btn.style.background = "var(--blue)";
+                }
             } else {
                 results[currentIdx] = "wrong";
+                showInstantFeedback(correct, user);
+                updateNavStyles();
+                btn.innerText = (currentIdx === 44 ? "FINALIZEAZĂ" : "URMĂTOAREA");
+                btn.style.background = "var(--blue)";
             }
-            
-            showInstantFeedback(correct, user);
-            updateNavStyles();
-            btn.innerText = (currentIdx === 44 ? "FINALIZEAZĂ" : "URMĂTOAREA");
-            btn.style.background = "var(--blue)";
         } else {
             if(currentIdx === 44) finish(); else move(1);
         }
@@ -193,7 +225,7 @@
         });
     }
 
-    function jump(i) { currentIdx = i; render(); }
+    function jump(i) { if(isPaused) return; currentIdx = i; render(); }
     function move(d) { currentIdx += d; if(currentIdx<0)currentIdx=0; if(currentIdx>44)currentIdx=44; render(); }
 
     function finish() {
