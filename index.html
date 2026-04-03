@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Examen PRAM Pro</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+    <style>
+        :root { --dark: #2c3e50; --blue: #3498db; --green: #27ae60; --red: #e74c3c; --orange: #f39c12; --gray: #ecf0f1; }
+        body { font-family: 'Segoe UI', sans-serif; background: #f4f7f6; margin: 0; padding: 10px; display: flex; flex-direction: column; align-items: center; }
+        
+        /* Navigarea de sus */
+        .nav-container { width: 100%; max-width: 800px; background: var(--dark); padding: 10px; border-radius: 10px; margin-bottom: 15px; }
+        .nav-grid { display: grid; grid-template-columns: repeat(9, 1fr); gap: 5px; }
+        .nav-item { padding: 8px 0; text-align: center; background: rgba(255,255,255,0.2); color: white; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: bold; }
+        .nav-item.active { background: var(--orange) !important; border: 2px solid white; }
+        .nav-item.correct { background: var(--green) !important; }
+        .nav-item.wrong { background: var(--red) !important; }
+
+        /* Cardul de Quiz */
+        .quiz-card { background: white; width: 100%; max-width: 800px; padding: 20px; border-radius: 15px; box-shadow: 0 5px 20px rgba(0,0,0,0.1); box-sizing: border-box; }
+        .stats-header { display: flex; justify-content: space-between; font-weight: bold; font-size: 14px; margin-bottom: 15px; color: var(--dark); border-bottom: 1px solid #eee; padding-bottom: 10px; }
+        
+        .q-text { font-size: 18px; font-weight: 600; margin-bottom: 20px; line-height: 1.4; }
+        .options-container { display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; }
+        .opt-btn { display: flex; align-items: center; padding: 12px; border: 2px solid #ddd; border-radius: 8px; cursor: pointer; background: white; font-size: 15px; }
+        .opt-btn.selected { border-color: var(--blue); background: #ebf5fb; }
+        
+        /* Butoane de control sub variante */
+        .controls { display: flex; gap: 10px; margin-top: 10px; }
+        button { flex: 1; padding: 15px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 16px; color: white; }
+        .btn-prev { background: #95a5a6; }
+        .btn-action { background: var(--green); }
+
+        /* Istoric */
+        .history-panel { width: 100%; max-width: 800px; margin-top: 20px; background: white; padding: 15px; border-radius: 10px; box-sizing: border-box; }
+        .history-item { display: flex; justify-content: space-between; padding: 8px; border-bottom: 1px solid #eee; font-size: 14px; }
+
+        #startScreen, #resultScreen { position: fixed; inset: 0; background: white; z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 20px; }
+    </style>
+</head>
+<body>
+
+<div id="startScreen">
+    <h1>📝 Simulări Examen PRAM</h1>
+    <p>45 Întrebări | 150 Puncte | 2 PSI, 2 Legis, 2 PM, 39 Prof</p>
+    <button onclick="initExam()" style="background:var(--green); width:250px; height:70px; font-size:20px;">START TEST</button>
+</div>
+
+<div class="nav-container">
+    <div class="nav-grid" id="navGrid"></div>
+</div>
+
+<div class="quiz-card" id="quizCard">
+    <div class="stats-header">
+        <span id="scoreDisplay">SCOR: 0 / 150</span>
+        <span id="qMeta" style="color:var(--blue)">-</span>
+    </div>
+    <div id="qText" class="q-text">Se încarcă...</div>
+    <div class="options-container" id="optionsArea"></div>
+    
+    <div class="controls">
+        <button class="btn-prev" onclick="move(-1)">ÎNAPOI</button>
+        <button class="btn-action" id="mainBtn" onclick="handleAction()">VERIFICĂ</button>
+    </div>
+</div>
+
+<div class="history-panel">
+    <strong>📜 Istoric Chestionare:</strong>
+    <div id="historyList"></div>
+</div>
+
+<div id="resultScreen" style="display:none">
+    <h1 id="verdictText">REZULTAT</h1>
+    <div style="font-size: 60px; font-weight: bold; color: var(--blue);" id="finalScoreText">0</div>
+    <button onclick="location.reload()" style="background:var(--dark); width:200px;">REIA TESTUL</button>
+</div>
+
+<script>
+    let db = [], exam = [], currentIdx = 0, currentScore = 0;
+    let answers = {}, results = {}; // results reține "correct" sau "wrong"
+
+    Papa.parse("baza_date.csv", {
+        download: true, header: true, skipEmptyLines: true,
+        complete: function(r) { db = r.data; loadHistory(); }
+    });
+
+    function initExam() {
+        const filter = (c) => db.filter(q => q.Categorie.toUpperCase().includes(c)).sort(() => 0.5 - Math.random());
+        exam = [
+            ...filter("PSI").slice(0, 2),
+            ...filter("LEGISLATIE").slice(0, 2),
+            ...filter("MUNCII").slice(0, 2),
+            ...filter("PROFESIONAL").slice(0, 39)
+        ].sort(() => 0.5 - Math.random());
+
+        document.getElementById('startScreen').style.display = 'none';
+        buildNav();
+        render();
+    }
+
+    function buildNav() {
+        const grid = document.getElementById('navGrid');
+        grid.innerHTML = exam.map((_, i) => `<div class="nav-item" id="nav-${i}" onclick="jump(${i})">${i+1}</div>`).join('');
+    }
+
+    function render() {
+        const q = exam[currentIdx];
+        document.getElementById('qMeta').innerText = `${q.Categorie} (${q.Punctaj}p)`;
+        document.getElementById('qText').innerText = q.Intrebare;
+        document.getElementById('scoreDisplay').innerText = `SCOR: ${currentScore} / 150`;
+        
+        const area = document.getElementById('optionsArea');
+        area.innerHTML = "";
+        ['A', 'B', 'C', 'D', 'E'].forEach(l => {
+            const val = q['Var_' + l];
+            if(val && val.trim() !== "" && val.trim() !== "-") {
+                area.innerHTML += `
+                    <div class="opt-btn ${ (answers[currentIdx] || "").includes(l) ? 'selected' : '' }" 
+                         onclick="toggleOpt(this, '${l}')" id="opt-${l}">
+                         <strong>${l}.</strong> &nbsp; ${val}
+                    </div>`;
+            }
+        });
+
+        // Update nav colors
+        document.querySelectorAll('.nav-item').forEach((el, i) => {
+            el.className = 'nav-item';
+            if(i === currentIdx) el.classList.add('active');
+            if(results[i] === "correct") el.classList.add('correct');
+            if(results[i] === "wrong") el.classList.add('wrong');
+        });
+
+        const btn = document.getElementById('mainBtn');
+        btn.innerText = results[currentIdx] ? (currentIdx === 44 ? "FINALIZEAZĂ" : "URMĂTOAREA") : "VERIFICĂ";
+    }
+
+    function toggleOpt(el, l) {
+        if(results[currentIdx]) return; // Blocăm dacă e deja verificat
+        el.classList.toggle('selected');
+        let current = answers[currentIdx] || "";
+        answers[currentIdx] = current.includes(l) ? current.replace(l, '') : (current + l).split('').sort().join('');
+    }
+
+    function handleAction() {
+        const btn = document.getElementById('mainBtn');
+        if(btn.innerText === "VERIFICĂ") {
+            const q = exam[currentIdx];
+            const correct = q.Raspuns_Corect.toUpperCase().replace(/\s/g, '');
+            const user = answers[currentIdx] || "";
+            
+            if(user === correct) {
+                results[currentIdx] = "correct";
+                currentScore += parseInt(q.Punctaj);
+            } else {
+                results[currentIdx] = "wrong";
+            }
+            
+            // Colorare instantanee
+            ['A','B','C','D','E'].forEach(l => {
+                const el = document.getElementById('opt-' + l);
+                if(el) {
+                    if(correct.includes(l)) el.style.background = "#d4edda"; el.style.borderColor = "var(--green)";
+                    if(user.includes(l) && !correct.includes(l)) el.style.background = "#f8d7da";
+                }
+            });
+            render();
+        } else {
+            if(currentIdx === 44) finish(); else move(1);
+        }
+    }
+
+    function jump(i) { currentIdx = i; render(); }
+    function move(d) { currentIdx += d; if(currentIdx<0)currentIdx=0; if(currentIdx>44)currentIdx=44; render(); }
+
+    function finish() {
+        saveHistory(currentScore);
+        document.getElementById('resultScreen').style.display = 'flex';
+        document.getElementById('finalScoreText').innerText = currentScore + " / 150";
+        document.getElementById('verdictText').innerText = currentScore >= 120 ? "ADMIS 🎖️" : "RESPINS ❌";
+    }
+
+    function saveHistory(s) {
+        let h = JSON.parse(localStorage.getItem('pram_h') || "[]");
+        h.unshift({ scor: s, data: new Date().toLocaleDateString() });
+        localStorage.setItem('pram_h', JSON.stringify(h.slice(0, 10)));
+    }
+
+    function loadHistory() {
+        let h = JSON.parse(localStorage.getItem('pram_h') || "[]");
+        document.getElementById('historyList').innerHTML = h.map((x, i) => 
+            `<div class="history-item"><span>Test #${h.length - i}</span> <b>${x.scor} puncte</b></div>`).join('');
+    }
+</script>
+
+</body>
+</html>
