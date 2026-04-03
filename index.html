@@ -3,38 +3,36 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Examen PRAM Pro</title>
+    <title>Examen PRAM - ID Crescător</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
     <style>
         :root { --dark: #2c3e50; --blue: #3498db; --green: #27ae60; --red: #e74c3c; --orange: #f39c12; --gray: #ecf0f1; }
-        body { font-family: 'Segoe UI', sans-serif; background: #f4f7f6; margin: 0; padding: 10px; display: flex; flex-direction: column; align-items: center; }
+        body { font-family: 'Segoe UI', sans-serif; background: #f4f7f6; margin: 0; padding: 5px; display: flex; flex-direction: column; align-items: center; }
         
-        /* Navigarea de sus */
-        .nav-container { width: 100%; max-width: 800px; background: var(--dark); padding: 10px; border-radius: 10px; margin-bottom: 15px; }
-        .nav-grid { display: grid; grid-template-columns: repeat(9, 1fr); gap: 5px; }
-        .nav-item { padding: 8px 0; text-align: center; background: rgba(255,255,255,0.2); color: white; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: bold; }
-        .nav-item.active { background: var(--orange) !important; border: 2px solid white; }
+        /* Navigarea de sus - MAI MICĂ */
+        .nav-container { width: 100%; max-width: 800px; background: var(--dark); padding: 5px; border-radius: 8px; margin-bottom: 10px; }
+        .nav-grid { display: grid; grid-template-columns: repeat(15, 1fr); gap: 3px; } /* 15 pe rând pt a fi mai mici */
+        .nav-item { padding: 4px 0; text-align: center; background: rgba(255,255,255,0.2); color: white; border-radius: 3px; cursor: pointer; font-size: 10px; font-weight: bold; }
+        .nav-item.active { background: var(--orange) !important; outline: 1px solid white; }
         .nav-item.correct { background: var(--green) !important; }
         .nav-item.wrong { background: var(--red) !important; }
 
         /* Cardul de Quiz */
-        .quiz-card { background: white; width: 100%; max-width: 800px; padding: 20px; border-radius: 15px; box-shadow: 0 5px 20px rgba(0,0,0,0.1); box-sizing: border-box; }
-        .stats-header { display: flex; justify-content: space-between; font-weight: bold; font-size: 14px; margin-bottom: 15px; color: var(--dark); border-bottom: 1px solid #eee; padding-bottom: 10px; }
+        .quiz-card { background: white; width: 100%; max-width: 800px; padding: 15px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); box-sizing: border-box; }
+        .stats-header { display: flex; justify-content: space-between; font-weight: bold; font-size: 13px; margin-bottom: 10px; color: var(--dark); border-bottom: 1px solid #eee; padding-bottom: 8px; }
         
-        .q-text { font-size: 18px; font-weight: 600; margin-bottom: 20px; line-height: 1.4; }
-        .options-container { display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; }
-        .opt-btn { display: flex; align-items: center; padding: 12px; border: 2px solid #ddd; border-radius: 8px; cursor: pointer; background: white; font-size: 15px; }
+        .q-text { font-size: 17px; font-weight: 600; margin-bottom: 15px; line-height: 1.3; }
+        .options-container { display: flex; flex-direction: column; gap: 8px; margin-bottom: 15px; }
+        .opt-btn { display: flex; align-items: center; padding: 10px; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; background: white; font-size: 14px; transition: 0.2s; }
         .opt-btn.selected { border-color: var(--blue); background: #ebf5fb; }
         
-        /* Butoane de control sub variante */
-        .controls { display: flex; gap: 10px; margin-top: 10px; }
-        button { flex: 1; padding: 15px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 16px; color: white; }
+        .controls { display: flex; gap: 8px; }
+        button { flex: 1; padding: 12px; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 15px; color: white; }
         .btn-prev { background: #95a5a6; }
         .btn-action { background: var(--green); }
 
-        /* Istoric */
-        .history-panel { width: 100%; max-width: 800px; margin-top: 20px; background: white; padding: 15px; border-radius: 10px; box-sizing: border-box; }
-        .history-item { display: flex; justify-content: space-between; padding: 8px; border-bottom: 1px solid #eee; font-size: 14px; }
+        .history-panel { width: 100%; max-width: 800px; margin-top: 15px; background: white; padding: 10px; border-radius: 8px; font-size: 13px; }
+        .history-item { display: flex; justify-content: space-between; padding: 5px; border-bottom: 1px solid #eee; }
 
         #startScreen, #resultScreen { position: fixed; inset: 0; background: white; z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 20px; }
     </style>
@@ -42,9 +40,9 @@
 <body>
 
 <div id="startScreen">
-    <h1>📝 Simulări Examen PRAM</h1>
-    <p>45 Întrebări | 150 Puncte | 2 PSI, 2 Legis, 2 PM, 39 Prof</p>
-    <button onclick="initExam()" style="background:var(--green); width:250px; height:70px; font-size:20px;">START TEST</button>
+    <h1>📝 Examen PRAM</h1>
+    <p>45 Întrebări sortate după ID | 150 Puncte</p>
+    <button onclick="initExam()" style="background:var(--green); padding: 15px 40px; font-size:18px; border-radius: 10px;">START EXAMEN</button>
 </div>
 
 <div class="nav-container">
@@ -66,39 +64,42 @@
 </div>
 
 <div class="history-panel">
-    <strong>📜 Istoric Chestionare:</strong>
+    <strong>📜 Istoric:</strong>
     <div id="historyList"></div>
 </div>
 
 <div id="resultScreen" style="display:none">
     <h1 id="verdictText">REZULTAT</h1>
-    <div style="font-size: 60px; font-weight: bold; color: var(--blue);" id="finalScoreText">0</div>
-    <button onclick="location.reload()" style="background:var(--dark); width:200px;">REIA TESTUL</button>
+    <div style="font-size: 50px; font-weight: bold; color: var(--blue);" id="finalScoreText">0</div>
+    <button onclick="location.reload()" style="background:var(--dark); padding: 10px 30px;">REIA TESTUL</button>
 </div>
 
 <script>
     let db = [], exam = [], currentIdx = 0, currentScore = 0;
-    let answers = {}, results = {}; // results reține "correct" sau "wrong"
+    let answers = {}, results = {}; 
 
     Papa.parse("baza_date.csv", {
-        download: true, 
-        header: true, 
-        skipEmptyLines: true,
-        delimiter: "", // Lăsăm gol ca să detecteze automat dacă e , sau ;
+        download: true, header: true, skipEmptyLines: true,
         complete: function(r) { 
             db = r.data; 
+            // Curățăm spațiile goale din ID-uri pentru sortare corectă
+            db.forEach(q => q.ID = parseInt(q.ID));
             loadHistory(); 
         }
     });
 
     function initExam() {
-        const filter = (c) => db.filter(q => q.Categorie.toUpperCase().includes(c)).sort(() => 0.5 - Math.random());
-        exam = [
+        const filter = (c) => db.filter(q => q.Categorie && q.Categorie.toUpperCase().includes(c)).sort(() => 0.5 - Math.random());
+        
+        let pool = [
             ...filter("PSI").slice(0, 2),
             ...filter("LEGISLATIE").slice(0, 2),
             ...filter("MUNCII").slice(0, 2),
             ...filter("PROFESIONAL").slice(0, 39)
-        ].sort(() => 0.5 - Math.random());
+        ];
+
+        // SORTARE DUPĂ ID CRESCĂTOR
+        exam = pool.sort((a, b) => a.ID - b.ID);
 
         document.getElementById('startScreen').style.display = 'none';
         buildNav();
@@ -112,7 +113,8 @@
 
     function render() {
         const q = exam[currentIdx];
-        document.getElementById('qMeta').innerText = `${q.Categorie} (${q.Punctaj}p)`;
+        // AFIȘARE ID ÎN METADATE
+        document.getElementById('qMeta').innerText = `ID: ${q.ID} | ${q.Categorie} (${q.Punctaj}p)`;
         document.getElementById('qText').innerText = q.Intrebare;
         document.getElementById('scoreDisplay').innerText = `SCOR: ${currentScore} / 150`;
         
@@ -129,20 +131,24 @@
             }
         });
 
-        // Update nav colors
+        updateNavStyles();
+
+        const btn = document.getElementById('mainBtn');
+        btn.innerText = results[currentIdx] ? (currentIdx === 44 ? "FINALIZEAZĂ" : "URMĂTOAREA") : "VERIFICĂ";
+        btn.style.background = results[currentIdx] ? "var(--blue)" : "var(--green)";
+    }
+
+    function updateNavStyles() {
         document.querySelectorAll('.nav-item').forEach((el, i) => {
-            el.className = 'nav-item';
+            el.classList.remove('active', 'correct', 'wrong');
             if(i === currentIdx) el.classList.add('active');
             if(results[i] === "correct") el.classList.add('correct');
             if(results[i] === "wrong") el.classList.add('wrong');
         });
-
-        const btn = document.getElementById('mainBtn');
-        btn.innerText = results[currentIdx] ? (currentIdx === 44 ? "FINALIZEAZĂ" : "URMĂTOAREA") : "VERIFICĂ";
     }
 
     function toggleOpt(el, l) {
-        if(results[currentIdx]) return; // Blocăm dacă e deja verificat
+        if(results[currentIdx]) return; 
         el.classList.toggle('selected');
         let current = answers[currentIdx] || "";
         answers[currentIdx] = current.includes(l) ? current.replace(l, '') : (current + l).split('').sort().join('');
@@ -162,18 +168,29 @@
                 results[currentIdx] = "wrong";
             }
             
-            // Colorare instantanee
-            ['A','B','C','D','E'].forEach(l => {
-                const el = document.getElementById('opt-' + l);
-                if(el) {
-                    if(correct.includes(l)) el.style.background = "#d4edda"; el.style.borderColor = "var(--green)";
-                    if(user.includes(l) && !correct.includes(l)) el.style.background = "#f8d7da";
-                }
-            });
-            render();
+            showInstantFeedback(correct, user);
+            updateNavStyles();
+            btn.innerText = (currentIdx === 44 ? "FINALIZEAZĂ" : "URMĂTOAREA");
+            btn.style.background = "var(--blue)";
         } else {
             if(currentIdx === 44) finish(); else move(1);
         }
+    }
+
+    function showInstantFeedback(correct, user) {
+        ['A','B','C','D','E'].forEach(l => {
+            const el = document.getElementById('opt-' + l);
+            if(el) {
+                if(correct.includes(l)) {
+                    el.style.background = "#d4edda"; 
+                    el.style.borderColor = "var(--green)";
+                }
+                if(user.includes(l) && !correct.includes(l)) {
+                    el.style.background = "#f8d7da";
+                    el.style.borderColor = "var(--red)";
+                }
+            }
+        });
     }
 
     function jump(i) { currentIdx = i; render(); }
@@ -195,7 +212,7 @@
     function loadHistory() {
         let h = JSON.parse(localStorage.getItem('pram_h') || "[]");
         document.getElementById('historyList').innerHTML = h.map((x, i) => 
-            `<div class="history-item"><span>Test #${h.length - i}</span> <b>${x.scor} puncte</b></div>`).join('');
+            `<div class="history-item"><span>Test #${h.length - i}</span> <b>${x.scor}p</b></div>`).join('');
     }
 </script>
 
