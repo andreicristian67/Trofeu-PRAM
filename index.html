@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Examen PRAM - Auto-Next</title>
+    <title>Examen PRAM - Auto-Next (2 Baze de Date)</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
     <style>
         :root { --dark: #2c3e50; --blue: #3498db; --green: #27ae60; --red: #e74c3c; --orange: #f39c12; --gray: #ecf0f1; }
@@ -38,7 +38,7 @@
 <div id="startScreen">
     <h1>📝 Examen PRAM</h1>
     <p>45 Întrebări | 150 Puncte</p>
-    <div id="loadStatus" style="margin-bottom:20px; color: red;">Se încarcă baza de date...</div>
+    <div id="loadStatus" style="margin-bottom:20px; color: red;">Se descarcă bazele de date...</div>
     <button id="startBtn" disabled onclick="initExam()" style="background:#ccc; padding: 15px 40px; font-size:18px; border-radius: 10px; cursor:not-allowed;">START EXAMEN</button>
 </div>
 
@@ -72,35 +72,70 @@
 </div>
 
 <script>
-    let db = [], exam = [], currentIdx = 0, currentScore = 0;
+    let db = [], answersDb = {};
+    let exam = [], currentIdx = 0, currentScore = 0;
     let answers = {}, results = {}, isPaused = false; 
+    let filesLoaded = 0;
 
-    // ÎNCĂRCARE BAZA DE DATE
+    // FUNCȚIE PENTRU VERIFICAREA ÎNCĂRCĂRII COMPLETE A AMBELOR FIȘIERE CSV
+    function checkReady() {
+        filesLoaded++;
+        if (filesLoaded === 2) {
+            // Mapăm răspunsurile corecte direct în baza de date cu întrebări pe baza ID-ului
+            db.forEach(q => {
+                if (answersDb[q.ID]) {
+                    q.Raspuns_Corect = answersDb[q.ID];
+                }
+            });
+
+            // Afișăm că totul e gata
+            let validQuestions = db.filter(q => q.Raspuns_Corect).length;
+            document.getElementById('loadStatus').innerText = `Gata! ${validQuestions} întrebări sincronizate perfect.`;
+            document.getElementById('loadStatus').style.color = "green";
+            const startBtn = document.getElementById('startBtn');
+            startBtn.disabled = false;
+            startBtn.style.background = "var(--green)";
+            startBtn.style.cursor = "pointer";
+            loadHistory();
+        }
+    }
+
+    // ÎNCĂRCARE BAZA DE DATE 1 (ÎNTREBĂRI ȘI VARIANTE)
     Papa.parse("baza_date.csv", {
         download: true,
         header: true,
         skipEmptyLines: true,
         complete: function(r) {
-            if (r.data.length > 0) {
-                db = r.data;
-                document.getElementById('loadStatus').innerText = "Baza de date încărcată: " + db.length + " întrebări.";
-                document.getElementById('loadStatus').style.color = "green";
-                const startBtn = document.getElementById('startBtn');
-                startBtn.disabled = false;
-                startBtn.style.background = "var(--green)";
-                startBtn.style.cursor = "pointer";
-                loadHistory();
-            } else {
-                document.getElementById('loadStatus').innerText = "Eroare: Fișierul CSV este gol!";
-            }
+            db = r.data;
+            checkReady();
         },
         error: function() {
             document.getElementById('loadStatus').innerText = "Eroare: Nu am găsit baza_date.csv!";
         }
     });
 
+    // ÎNCĂRCARE BAZA DE DATE 2 (RĂSPUNSURI CORECTE)
+    Papa.parse("raspunsuri.csv", {
+        download: true,
+        header: true,
+        skipEmptyLines: true,
+        complete: function(r) {
+            // Creăm un dicționar rapid pentru căutarea răspunsurilor { "8268": "A, B, D" }
+            r.data.forEach(row => {
+                if (row.ID && row.Raspuns_Corect) {
+                    answersDb[row.ID.trim()] = row.Raspuns_Corect;
+                }
+            });
+            checkReady();
+        },
+        error: function() {
+            document.getElementById('loadStatus').innerText = "Eroare: Nu am găsit raspunsuri.csv!";
+        }
+    });
+
     function initExam() {
-        const getCat = (c) => db.filter(q => q.Categorie && q.Categorie.toString().toUpperCase().includes(c)).sort(() => 0.5 - Math.random());
+        // Filtrăm DOAR întrebările care au primit un răspuns corect din a doua bază de date
+        const getCat = (c) => db.filter(q => q.Categorie && q.Categorie.toString().toUpperCase().includes(c) && q.Raspuns_Corect).sort(() => 0.5 - Math.random());
         
         let pool = [
             ...getCat("PSI").slice(0, 2),
@@ -165,6 +200,7 @@
         });
     }
 
+    // Funcția care selectează opțiunea dorită.
     function toggleOpt(el, l) {
         if(results[currentIdx] || isPaused) return; 
         el.classList.toggle('selected');
@@ -178,7 +214,7 @@
         const q = exam[currentIdx];
 
         if(btn.innerText === "VERIFICĂ") {
-            const correct = q.Raspuns_Corect.toString().toUpperCase().replace(/\s/g, '');
+            const correct = q.Raspuns_Corect.toString().toUpperCase().replace(/\s/g, ''); // Curăță "A, B" în "AB"
             const user = answers[currentIdx] || "";
             
             if(user === correct) {
