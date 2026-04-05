@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Examen PRAM - Auto-Next (Sincronizare 2 Baze de Date)</title>
+    <title>Examen PRAM - Auto-Next (GitHub Sync)</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
     <style>
         :root { --dark: #2c3e50; --blue: #3498db; --green: #27ae60; --red: #e74c3c; --orange: #f39c12; --gray: #ecf0f1; }
@@ -38,7 +38,7 @@
 <div id="startScreen">
     <h1>📝 Examen PRAM</h1>
     <p>45 Întrebări | 150 Puncte</p>
-    <div id="loadStatus" style="margin-bottom:20px; color: red; font-weight: bold;">Se descarcă bazele de date...</div>
+    <div id="loadStatus" style="margin-bottom:20px; color: var(--orange); font-weight: bold;">Se descarcă datele de pe server... (1/2)</div>
     <button id="startBtn" disabled onclick="initExam()" style="background:#ccc; padding: 15px 40px; font-size:18px; border-radius: 10px; cursor:not-allowed;">START EXAMEN</button>
 </div>
 
@@ -77,76 +77,75 @@
     let answers = {}, results = {}, isPaused = false; 
     let filesLoaded = 0;
 
-    // FUNCȚIE PENTRU VERIFICAREA ÎNCĂRCĂRII
-    function checkReady() {
+    // Funcția care îmbină datele din cele două CSV-uri
+    function syncData() {
         filesLoaded++;
+        document.getElementById('loadStatus').innerText = `Se descarcă datele de pe server... (${filesLoaded}/2)`;
+        
         if (filesLoaded === 2) {
-            try {
-                // Mapăm răspunsurile
-                db.forEach(q => {
-                    let id = String(q.ID).trim();
-                    if (answersDb[id]) {
-                        q.Raspuns_Corect = answersDb[id];
-                    }
-                });
-
-                let validQuestions = db.filter(q => q.Raspuns_Corect).length;
-                
-                if (validQuestions === 0) {
-                    document.getElementById('loadStatus').innerText = "Eroare: Nicio întrebare nu are răspuns mapat! Verifică dacă ID-urile din cele două CSV-uri se potrivesc.";
-                    return;
+            let validQuestionsCount = 0;
+            
+            db.forEach(q => {
+                let id = String(q.ID).trim();
+                if (answersDb[id]) {
+                    q.Raspuns_Corect = answersDb[id];
+                    validQuestionsCount++;
                 }
+            });
 
-                document.getElementById('loadStatus').innerText = `Gata! ${validQuestions} întrebări sincronizate perfect.`;
-                document.getElementById('loadStatus').style.color = "green";
-                const startBtn = document.getElementById('startBtn');
-                startBtn.disabled = false;
-                startBtn.style.background = "var(--green)";
-                startBtn.style.cursor = "pointer";
-                loadHistory();
-            } catch(e) {
-                document.getElementById('loadStatus').innerText = "Eroare la sincronizarea datelor: " + e.message;
+            if (validQuestionsCount === 0) {
+                document.getElementById('loadStatus').innerText = "Eroare: Nicio întrebare nu are răspunsul mapat. Verifică CSV-urile de pe GitHub!";
+                document.getElementById('loadStatus').style.color = "red";
+                return;
             }
+
+            document.getElementById('loadStatus').innerText = `Succes! S-au încărcat și mapat ${validQuestionsCount} întrebări.`;
+            document.getElementById('loadStatus').style.color = "green";
+            
+            const startBtn = document.getElementById('startBtn');
+            startBtn.disabled = false;
+            startBtn.style.background = "var(--green)";
+            startBtn.style.cursor = "pointer";
+            
+            loadHistory();
         }
     }
 
-    // ÎNCĂRCARE BAZA DE DATE (ÎNTREBĂRI)
+    // DESCĂRCARE BAZA DE DATE (ÎNTREBĂRI)
     Papa.parse("baza_date.csv", {
         download: true,
         header: true,
         skipEmptyLines: true,
-        complete: function(r) {
-            db = r.data;
-            checkReady();
+        complete: function(results) {
+            db = results.data;
+            syncData();
         },
         error: function(err) {
-            document.getElementById('loadStatus').innerText = "Eroare la citirea baza_date.csv! (Eroare: " + err.message + ")";
+            document.getElementById('loadStatus').innerText = "Eroare: Nu s-a putut descărca baza_date.csv de pe GitHub.";
+            document.getElementById('loadStatus').style.color = "red";
         }
     });
 
-    // ÎNCĂRCARE BAZA DE DATE (RĂSPUNSURI)
+    // DESCĂRCARE BAZA DE DATE (RĂSPUNSURI CORECTE)
     Papa.parse("raspunsuri.csv", {
         download: true,
         header: true,
         skipEmptyLines: true,
-        complete: function(r) {
-            try {
-                r.data.forEach(row => {
-                    let keys = Object.keys(row);
-                    let idKey = keys.find(k => k.trim().toUpperCase() === "ID");
-                    let respKey = keys.find(k => k.trim().toUpperCase() === "RASPUNS_CORECT");
+        complete: function(results) {
+            results.data.forEach(row => {
+                let keys = Object.keys(row);
+                let idKey = keys.find(k => k.trim().toUpperCase() === "ID");
+                let respKey = keys.find(k => k.trim().toUpperCase() === "RASPUNS_CORECT");
 
-                    if (idKey && respKey && row[idKey] && row[respKey]) {
-                        answersDb[String(row[idKey]).trim()] = String(row[respKey]).trim();
-                    }
-                });
-                checkReady();
-            } catch(e) {
-                document.getElementById('loadStatus').innerText = "Eroare JS la procesarea raspunsuri.csv: " + e.message;
-            }
+                if (idKey && respKey && row[idKey] && row[respKey]) {
+                    answersDb[String(row[idKey]).trim()] = String(row[respKey]).trim();
+                }
+            });
+            syncData();
         },
         error: function(err) {
-            document.getElementById('loadStatus').innerText = "Eroare la citirea raspunsuri.csv! (Eroare: " + err.message + ")";
+            document.getElementById('loadStatus').innerText = "Eroare: Nu s-a putut descărca raspunsuri.csv de pe GitHub.";
+            document.getElementById('loadStatus').style.color = "red";
         }
     });
 
@@ -163,7 +162,7 @@
         exam = pool.sort((a, b) => parseInt(a.ID) - parseInt(b.ID));
         
         if (exam.length === 0) {
-            alert("Eroare la selectarea întrebărilor. Posibil să nu ai întrebări din categoriile selectate (PSI, LEGISLATIE, MUNCII, PROFESIONAL) care să aibă și răspuns mapat!");
+            alert("Nu s-au putut extrage cele 45 de întrebări. Asigură-te că datele conțin categoriile cerute și răspunsuri mapate!");
             return;
         }
 
@@ -235,7 +234,7 @@
         const q = exam[currentIdx];
 
         if(btn.innerText === "VERIFICĂ") {
-            const correct = q.Raspuns_Corect.toString().toUpperCase().replace(/[^A-E]/g, ''); // Elimină spații și virgule, reține doar A-E
+            const correct = q.Raspuns_Corect.toString().toUpperCase().replace(/[^A-E]/g, ''); 
             const user = answers[currentIdx] || "";
             
             if(user === correct) {
