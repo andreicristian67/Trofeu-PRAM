@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Examen PRAM - Auto-Next (GitHub Sync)</title>
+    <title>Examen PRAM - Auto-Next</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
     <style>
         :root { --dark: #2c3e50; --blue: #3498db; --green: #27ae60; --red: #e74c3c; --orange: #f39c12; --gray: #ecf0f1; }
@@ -38,7 +38,7 @@
 <div id="startScreen">
     <h1>📝 Examen PRAM</h1>
     <p>45 Întrebări | 150 Puncte</p>
-    <div id="loadStatus" style="margin-bottom:20px; color: var(--orange); font-weight: bold;">Se descarcă datele de pe server... (0/2)</div>
+    <div id="loadStatus" style="margin-bottom:20px; color: var(--orange); font-weight: bold;">Se descarcă datele...</div>
     <button id="startBtn" disabled onclick="initExam()" style="background:#ccc; padding: 15px 40px; font-size:18px; border-radius: 10px; cursor:not-allowed;">START EXAMEN</button>
 </div>
 
@@ -72,117 +72,92 @@
 </div>
 
 <script>
-    let db = [], answersDb = {};
+    let dbRaw = [], answersRaw = [];
+    let db = []; // Baza finală combinată
     let exam = [], currentIdx = 0, currentScore = 0;
     let answers = {}, results = {}, isPaused = false; 
     let filesLoaded = 0;
 
-    // Funcție pentru curățarea textului (elimină spații inutile, face litere mari)
-    function cleanStr(str) {
-        if (!str) return "";
-        return String(str).trim().toUpperCase().replace(/[\u200B-\u200D\uFEFF]/g, '');
-    }
-
-    // Funcția care se apelează după ce se descarcă fiecare CSV
-    function checkReady() {
+    // Funcția care sincronizează datele curat
+    function syncData() {
         filesLoaded++;
-        document.getElementById('loadStatus').innerText = `Se descarcă datele... (${filesLoaded}/2)`;
-        
         if (filesLoaded === 2) {
-            let validCount = 0;
-
-            // Parcurgem baza de date și îi adăugăm răspunsul corect din dicționar
-            db.forEach(q => {
-                // Caută coloana ID din CSV-ul cu întrebări
-                let idKey = Object.keys(q).find(k => cleanStr(k) === 'ID');
-                if (idKey && q[idKey]) {
-                    let idVal = cleanStr(q[idKey]);
-                    
-                    // Dacă ID-ul există în baza cu răspunsuri, îl mapăm
-                    if (answersDb[idVal]) {
-                        q.Raspuns_Corect = answersDb[idVal];
-                        validCount++;
+            
+            // Creăm un dicționar cu răspunsuri pentru o căutare rapidă bazată doar pe cifrele ID-ului
+            let ansDict = {};
+            answersRaw.forEach(row => {
+                let keys = Object.keys(row);
+                let idKey = keys.find(k => k.toLowerCase().includes('id'));
+                let ansKey = keys.find(k => k.toLowerCase().includes('raspuns'));
+                
+                if(idKey && ansKey && row[idKey]) {
+                    let numericId = parseInt(String(row[idKey]).replace(/\D/g, ''));
+                    if(!isNaN(numericId)) {
+                        ansDict[numericId] = String(row[ansKey]);
                     }
                 }
             });
 
-            if (validCount === 0) {
-                document.getElementById('loadStatus').innerText = "Eroare: Nu s-a putut mapa niciun răspuns. Verifică CSV-urile!";
-                document.getElementById('loadStatus').style.color = "red";
-                return;
-            }
+            let mapate = 0;
+            // Combinăm baza de date cu dicționarul de răspunsuri
+            dbRaw.forEach(q => {
+                let keys = Object.keys(q);
+                let idKey = keys.find(k => k.toLowerCase().includes('id'));
+                
+                if(idKey && q[idKey]) {
+                    let numericId = parseInt(String(q[idKey]).replace(/\D/g, ''));
+                    if(ansDict[numericId]) {
+                        q.Raspuns_Corect = ansDict[numericId];
+                        q.cleanId = numericId; // salvăm ID-ul curat
+                        db.push(q);
+                        mapate++;
+                    }
+                }
+            });
 
-            document.getElementById('loadStatus').innerText = `Gata! Au fost mapate ${validCount} întrebări valide.`;
-            document.getElementById('loadStatus').style.color = "green";
-            
+            const statusEl = document.getElementById('loadStatus');
             const startBtn = document.getElementById('startBtn');
-            startBtn.disabled = false;
-            startBtn.style.background = "var(--green)";
-            startBtn.style.cursor = "pointer";
-            
-            loadHistory();
+
+            if (mapate > 0) {
+                statusEl.innerText = `Gata! Au fost încărcate și sincronizate ${mapate} întrebări.`;
+                statusEl.style.color = "green";
+                startBtn.disabled = false;
+                startBtn.style.background = "var(--green)";
+                startBtn.style.cursor = "pointer";
+                loadHistory();
+            } else {
+                statusEl.innerText = "Eroare: S-au descărcat fișierele, dar nu s-a potrivit niciun ID!";
+                statusEl.style.color = "red";
+            }
         }
     }
 
-    // Configurări pentru parser-ul CSV
-    const papaConfig = {
-        download: true,
-        header: true,
-        skipEmptyLines: true
-    };
-
-    // Încărcare întrebări
+    // Încărcare baza de date
     Papa.parse("baza_date.csv", {
-        ...papaConfig,
-        complete: function(res) {
-            db = res.data;
-            checkReady();
-        },
-        error: function(err) {
-            document.getElementById('loadStatus').innerText = "Eroare la baza_date.csv";
-            document.getElementById('loadStatus').style.color = "red";
-        }
+        download: true, header: true, skipEmptyLines: true,
+        complete: function(r) { dbRaw = r.data; syncData(); },
+        error: function() { document.getElementById('loadStatus').innerText = "Eroare: Nu s-a găsit baza_date.csv"; }
     });
 
-    // Încărcare Răspunsuri
+    // Încărcare răspunsuri
     Papa.parse("raspunsuri.csv", {
-        ...papaConfig,
-        complete: function(res) {
-            res.data.forEach(row => {
-                // Caută coloanele indiferent cum sunt denumite în header (spații etc.)
-                let idKey = Object.keys(row).find(k => cleanStr(k) === "ID");
-                let respKey = Object.keys(row).find(k => cleanStr(k).replace(/_/g, '') === "RASPUNSCORECT");
-
-                if (idKey && respKey && row[idKey] && row[respKey]) {
-                    let cID = cleanStr(row[idKey]);
-                    let cResp = cleanStr(row[respKey]);
-                    answersDb[cID] = cResp;
-                }
-            });
-            checkReady();
-        },
-        error: function(err) {
-            document.getElementById('loadStatus').innerText = "Eroare la raspunsuri.csv";
-            document.getElementById('loadStatus').style.color = "red";
-        }
+        download: true, header: true, skipEmptyLines: true,
+        complete: function(r) { answersRaw = r.data; syncData(); },
+        error: function() { document.getElementById('loadStatus').innerText = "Eroare: Nu s-a găsit raspunsuri.csv"; }
     });
 
-    // Inițializarea examenului
     function initExam() {
-        // Obținem doar întrebările valide
-        let validQs = db.filter(q => q.Raspuns_Corect).sort(() => 0.5 - Math.random());
-        
+        // Amestecăm toată baza de date validă
+        let validQs = [...db].sort(() => 0.5 - Math.random());
         let pool = [];
 
-        // Funcție care extrage N întrebări dintr-o categorie
-        const extract = (keyword, count) => {
+        // Funcție care caută întrebări după categorie
+        const extractCat = (keyword, count) => {
             let extracted = [];
             for (let i = validQs.length - 1; i >= 0; i--) {
-                let catKey = Object.keys(validQs[i]).find(k => cleanStr(k) === 'CATEGORIE');
-                let catVal = catKey ? cleanStr(validQs[i][catKey]) : "";
-                
-                // Normalizăm (scoatem diacriticele) ca să prindem și 'MUNCII' și 'MUNCĂ'
-                catVal = catVal.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+                let q = validQs[i];
+                let catKey = Object.keys(q).find(k => k.toLowerCase().includes('categorie'));
+                let catVal = catKey && q[catKey] ? String(q[catKey]).toUpperCase() : "";
                 
                 if (catVal.includes(keyword)) {
                     extracted.push(validQs.splice(i, 1)[0]);
@@ -192,31 +167,22 @@
             return extracted;
         };
 
-        // Încercăm să luăm proporțiile cerute
-        pool.push(...extract("PSI", 2));
-        pool.push(...extract("LEGISLATIE", 2));
-        pool.push(...extract("MUNC", 2)); // Caută 'MUNCII', 'MUNCA'
-        pool.push(...extract("PROFESIONAL", 39));
+        // Selectăm întrebările respectând proporțiile
+        pool.push(...extractCat("PSI", 2));
+        pool.push(...extractCat("LEGISLATIE", 2));
+        pool.push(...extractCat("MUNC", 2)); // acoperă "MUNCII", "MUNCA"
+        pool.push(...extractCat("PROFESIONAL", 39));
 
-        // Dacă nu s-au putut lua fix 45 din categoriile de mai sus, completăm cu restul întrebărilor amestecate!
+        // Dacă cumva nu s-au făcut 45 de întrebări, umplem restul cu ce a mai rămas în baza de date
         while (pool.length < 45 && validQs.length > 0) {
             pool.push(validQs.pop());
         }
 
-        // Dacă sunt mai mult de 45 (dintr-un motiv oarecare), tăiem surplusul
+        // Asigurăm fix 45 de întrebări (tăiem dacă a depășit)
         exam = pool.slice(0, 45);
 
-        // Le sortăm după ID pentru afișare
-        exam.sort((a, b) => {
-            let idA = Object.keys(a).find(k => cleanStr(k) === 'ID');
-            let idB = Object.keys(b).find(k => cleanStr(k) === 'ID');
-            return parseInt(a[idA]) - parseInt(b[idB]);
-        });
-
-        if (exam.length === 0) {
-            alert("Nu s-a putut genera examenul. Lipsesc întrebările!");
-            return;
-        }
+        // Sortăm examenul după ID pentru o afișare frumoasă în grilă
+        exam.sort((a, b) => a.cleanId - b.cleanId);
 
         document.getElementById('startScreen').style.display = 'none';
         buildNav();
@@ -232,26 +198,20 @@
         const q = exam[currentIdx];
         if(!q) return;
         
-        let idKey = Object.keys(q).find(k => cleanStr(k) === 'ID');
-        let catKey = Object.keys(q).find(k => cleanStr(k) === 'CATEGORIE');
-        let pctKey = Object.keys(q).find(k => cleanStr(k) === 'PUNCTAJ');
-        let intrebareKey = Object.keys(q).find(k => cleanStr(k) === 'INTREBARE');
+        let idKey = Object.keys(q).find(k => k.toLowerCase().includes('id'));
+        let catKey = Object.keys(q).find(k => k.toLowerCase().includes('categorie'));
+        let pctKey = Object.keys(q).find(k => k.toLowerCase().includes('punctaj'));
+        let intrebareKey = Object.keys(q).find(k => k.toLowerCase().includes('intrebare'));
 
-        let id = idKey ? q[idKey] : "?";
-        let cat = catKey ? q[catKey] : "?";
-        let pct = pctKey ? q[pctKey] : "0";
-        let text = intrebareKey ? q[intrebareKey] : "Text lipsă";
-
-        document.getElementById('qMeta').innerText = `ID: ${id} | ${cat} (${pct}p)`;
-        document.getElementById('qText').innerText = text;
+        document.getElementById('qMeta').innerText = `ID: ${q[idKey]} | ${q[catKey]} (${q[pctKey] || 0}p)`;
+        document.getElementById('qText').innerText = q[intrebareKey];
         document.getElementById('scoreDisplay').innerText = `SCOR: ${currentScore} / 150`;
         
         const area = document.getElementById('optionsArea');
         area.innerHTML = "";
         
-        // Extragem variantele (A, B, C, D, E)
         ['A', 'B', 'C', 'D', 'E'].forEach(l => {
-            let varKey = Object.keys(q).find(k => cleanStr(k) === `VAR_${l}`);
+            let varKey = Object.keys(q).find(k => k.toUpperCase() === `VAR_${l}`);
             let val = varKey ? q[varKey] : null;
             
             if(val && val.toString().trim() !== "" && val.toString().trim() !== "-") {
@@ -271,7 +231,7 @@
         if(results[currentIdx]) {
             btn.innerText = (currentIdx === exam.length - 1 ? "FINALIZEAZĂ" : "URMĂTOAREA");
             btn.style.background = "var(--blue)";
-            showInstantFeedback(q.Raspuns_Corect.replace(/\s/g, ''), answers[currentIdx] || "");
+            showInstantFeedback(q.Raspuns_Corect.toUpperCase().replace(/[^A-E]/g, ''), answers[currentIdx] || "");
         } else {
             btn.innerText = "VERIFICĂ";
             btn.style.background = "var(--green)";
@@ -300,10 +260,10 @@
         const q = exam[currentIdx];
 
         if(btn.innerText === "VERIFICĂ") {
-            const correct = q.Raspuns_Corect.replace(/[^A-E]/g, ''); 
+            const correct = q.Raspuns_Corect.toUpperCase().replace(/[^A-E]/g, ''); 
             const user = answers[currentIdx] || "";
             
-            let pctKey = Object.keys(q).find(k => cleanStr(k) === 'PUNCTAJ');
+            let pctKey = Object.keys(q).find(k => k.toLowerCase().includes('punctaj'));
             let punctaj = parseInt(q[pctKey] || 0);
 
             if(user === correct) {
@@ -312,6 +272,7 @@
                 showInstantFeedback(correct, user);
                 updateNavStyles();
                 
+                // AUTO-NEXT
                 if (currentIdx < exam.length - 1) {
                     isPaused = true;
                     btn.innerText = "CORECT! SE TRECE LA URMĂTOAREA...";
