@@ -31,6 +31,9 @@
 
         #startScreen, #resultScreen { position: fixed; inset: 0; background: white; z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 20px; }
         .history-panel { width: 100%; max-width: 800px; margin-top: 15px; background: white; padding: 10px; border-radius: 8px; font-size: 13px; }
+        
+        /* O mică fereastră de diagnoză pentru a te ajuta pe tine să vezi ce nu merge */
+        #debugInfo { display: none; margin-top: 20px; background: #fff3cd; color: #856404; padding: 10px; border: 1px solid #ffeeba; border-radius: 5px; text-align: left; font-family: monospace; font-size: 12px; width: 100%; max-width: 600px; max-height: 200px; overflow-y: auto; }
     </style>
 </head>
 <body>
@@ -38,8 +41,9 @@
 <div id="startScreen">
     <h1>📝 Examen PRAM</h1>
     <p>45 Întrebări | 150 Puncte</p>
-    <div id="loadStatus" style="margin-bottom:20px; color: var(--orange); font-weight: bold;">Se descarcă datele de pe server... (1/2)</div>
+    <div id="loadStatus" style="margin-bottom:20px; color: var(--orange); font-weight: bold;">Se descarcă datele de pe server... (0/2)</div>
     <button id="startBtn" disabled onclick="initExam()" style="background:#ccc; padding: 15px 40px; font-size:18px; border-radius: 10px; cursor:not-allowed;">START EXAMEN</button>
+    <div id="debugInfo"></div>
 </div>
 
 <div class="nav-container">
@@ -76,8 +80,19 @@
     let exam = [], currentIdx = 0, currentScore = 0;
     let answers = {}, results = {}, isPaused = false; 
     let filesLoaded = 0;
+    let debugMessages = []; // Pentru afișarea log-urilor de eroare
 
-    // Funcția care îmbină datele din cele două CSV-uri
+    function logDebug(msg) {
+        debugMessages.push(msg);
+        console.log(msg);
+    }
+
+    // Funcția care curăță cheile și valorile (elimină spații, caractere speciale invizibile)
+    function sanitizeString(str) {
+        if (!str) return "";
+        return String(str).replace(/[\u200B-\u200D\uFEFF]/g, '').trim(); // Elimină BOM și trim
+    }
+
     function syncData() {
         filesLoaded++;
         document.getElementById('loadStatus').innerText = `Se descarcă datele de pe server... (${filesLoaded}/2)`;
@@ -85,17 +100,34 @@
         if (filesLoaded === 2) {
             let validQuestionsCount = 0;
             
+            // Afișăm în debug un ID de test din prima bază pentru a vedea cum arată
+            if(db.length > 0) {
+                let firstDbId = Object.keys(db[0]).find(k => sanitizeString(k).toUpperCase() === 'ID');
+                logDebug(`Primul ID găsit în baza_date.csv: [${db[0][firstDbId]}]`);
+            }
+
             db.forEach(q => {
-                let id = String(q.ID).trim();
-                if (answersDb[id]) {
-                    q.Raspuns_Corect = answersDb[id];
-                    validQuestionsCount++;
+                // Căutăm proprietatea care se numește 'ID' (indiferent de litere mari/mici sau spații)
+                let idKey = Object.keys(q).find(k => sanitizeString(k).toUpperCase() === 'ID');
+                
+                if (idKey && q[idKey]) {
+                    let cleanId = sanitizeString(q[idKey]);
+                    
+                    // Căutăm răspunsul în dicționar folosind ID-ul curat
+                    if (answersDb[cleanId]) {
+                        q.Raspuns_Corect = answersDb[cleanId];
+                        validQuestionsCount++;
+                    }
                 }
             });
 
             if (validQuestionsCount === 0) {
-                document.getElementById('loadStatus').innerText = "Eroare: Nicio întrebare nu are răspunsul mapat. Verifică CSV-urile de pe GitHub!";
+                document.getElementById('loadStatus').innerText = "Eroare: S-au descărcat fișierele, dar nicio întrebare nu are răspunsul mapat (IDs nu se potrivesc).";
                 document.getElementById('loadStatus').style.color = "red";
+                
+                let debugDiv = document.getElementById('debugInfo');
+                debugDiv.style.display = "block";
+                debugDiv.innerHTML = debugMessages.join('<br>');
                 return;
             }
 
@@ -111,13 +143,20 @@
         }
     }
 
-    // DESCĂRCARE BAZA DE DATE (ÎNTREBĂRI)
-    Papa.parse("baza_date.csv", {
+    // CONFIGURARE COMUNĂ PENTRU PAPAPARSE
+    const papaConfig = {
         download: true,
         header: true,
         skipEmptyLines: true,
+        // Dăm șansa parserului să descopere automat separatorul (; sau ,)
+    };
+
+    // DESCĂRCARE BAZA DE DATE (ÎNTREBĂRI)
+    Papa.parse("baza_date.csv", {
+        ...papaConfig,
         complete: function(results) {
             db = results.data;
+            logDebug(`A descărcat baza_date.csv. Linii găsite: ${db.length}`);
             syncData();
         },
         error: function(err) {
@@ -128,19 +167,24 @@
 
     // DESCĂRCARE BAZA DE DATE (RĂSPUNSURI CORECTE)
     Papa.parse("raspunsuri.csv", {
-        download: true,
-        header: true,
-        skipEmptyLines: true,
+        ...papaConfig,
         complete: function(results) {
+            let countAns = 0;
             results.data.forEach(row => {
                 let keys = Object.keys(row);
-                let idKey = keys.find(k => k.trim().toUpperCase() === "ID");
-                let respKey = keys.find(k => k.trim().toUpperCase() === "RASPUNS_CORECT");
+                
+                // Găsim cheile reale indiferent de cum sunt formatate în CSV
+                let idKey = keys.find(k => sanitizeString(k).toUpperCase() === "ID");
+                let respKey = keys.find(k => sanitizeString(k).toUpperCase().replace(/_/g, '') === "RASPUNSCORECT");
 
                 if (idKey && respKey && row[idKey] && row[respKey]) {
-                    answersDb[String(row[idKey]).trim()] = String(row[respKey]).trim();
+                    let cleanId = sanitizeString(row[idKey]);
+                    answersDb[cleanId] = sanitizeString(row[respKey]);
+                    countAns++;
                 }
             });
+            
+            logDebug(`A descărcat raspunsuri.csv. Răspunsuri valide găsite: ${countAns}`);
             syncData();
         },
         error: function(err) {
@@ -150,7 +194,13 @@
     });
 
     function initExam() {
-        const getCat = (c) => db.filter(q => q.Categorie && q.Categorie.toString().toUpperCase().includes(c) && q.Raspuns_Corect).sort(() => 0.5 - Math.random());
+        // Căutăm categoria indiferent de cum se numește cheia 'Categorie' (ex: " Categorie ")
+        const getCat = (c) => db.filter(q => {
+            let catKey = Object.keys(q).find(k => sanitizeString(k).toUpperCase() === 'CATEGORIE');
+            if(!catKey || !q[catKey]) return false;
+            
+            return q[catKey].toString().toUpperCase().includes(c) && q.Raspuns_Corect;
+        }).sort(() => 0.5 - Math.random());
         
         let pool = [
             ...getCat("PSI").slice(0, 2),
@@ -159,10 +209,14 @@
             ...getCat("PROFESIONAL").slice(0, 39)
         ];
 
-        exam = pool.sort((a, b) => parseInt(a.ID) - parseInt(b.ID));
+        exam = pool.sort((a, b) => {
+            let idKeyA = Object.keys(a).find(k => sanitizeString(k).toUpperCase() === 'ID');
+            let idKeyB = Object.keys(b).find(k => sanitizeString(k).toUpperCase() === 'ID');
+            return parseInt(sanitizeString(a[idKeyA])) - parseInt(sanitizeString(b[idKeyB]));
+        });
         
         if (exam.length === 0) {
-            alert("Nu s-au putut extrage cele 45 de întrebări. Asigură-te că datele conțin categoriile cerute și răspunsuri mapate!");
+            alert("Nu s-au putut extrage întrebările. Este posibil ca nicio întrebare din PSI, LEGISLATIE, MUNCII sau PROFESIONAL să nu fi primit răspuns.");
             return;
         }
 
@@ -180,14 +234,23 @@
         const q = exam[currentIdx];
         if(!q) return;
         
-        document.getElementById('qMeta').innerText = `ID: ${q.ID} | ${q.Categorie} (${q.Punctaj}p)`;
-        document.getElementById('qText').innerText = q.Intrebare;
+        let idKey = Object.keys(q).find(k => sanitizeString(k).toUpperCase() === 'ID');
+        let catKey = Object.keys(q).find(k => sanitizeString(k).toUpperCase() === 'CATEGORIE');
+        let pctKey = Object.keys(q).find(k => sanitizeString(k).toUpperCase() === 'PUNCTAJ');
+        let intrebareKey = Object.keys(q).find(k => sanitizeString(k).toUpperCase() === 'INTREBARE');
+
+        document.getElementById('qMeta').innerText = `ID: ${q[idKey]} | ${q[catKey]} (${q[pctKey]}p)`;
+        document.getElementById('qText').innerText = q[intrebareKey];
         document.getElementById('scoreDisplay').innerText = `SCOR: ${currentScore} / 150`;
         
         const area = document.getElementById('optionsArea');
         area.innerHTML = "";
+        
+        // Căutăm manual fiecare variantă (Var_A, Var_B etc.) ca să evităm probleme cu denumirile coloanelor din CSV
         ['A', 'B', 'C', 'D', 'E'].forEach(l => {
-            const val = q['Var_' + l] || q['Var_' + l.toLowerCase()]; 
+            let varKey = Object.keys(q).find(k => sanitizeString(k).toUpperCase() === `VAR_${l}`);
+            let val = varKey ? q[varKey] : null;
+            
             if(val && val.toString().trim() !== "" && val.toString().trim() !== "-") {
                 area.innerHTML += `
                     <div class="opt-btn ${ (answers[currentIdx] || "").includes(l) ? 'selected' : '' }" 
@@ -203,7 +266,7 @@
         const btn = document.getElementById('mainBtn');
         btn.disabled = false;
         if(results[currentIdx]) {
-            btn.innerText = (currentIdx === 44 ? "FINALIZEAZĂ" : "URMĂTOAREA");
+            btn.innerText = (currentIdx === exam.length - 1 ? "FINALIZEAZĂ" : "URMĂTOAREA");
             btn.style.background = "var(--blue)";
             showInstantFeedback(q.Raspuns_Corect.toString().toUpperCase().replace(/\s/g, ''), answers[currentIdx] || "");
         } else {
@@ -237,13 +300,16 @@
             const correct = q.Raspuns_Corect.toString().toUpperCase().replace(/[^A-E]/g, ''); 
             const user = answers[currentIdx] || "";
             
+            let pctKey = Object.keys(q).find(k => sanitizeString(k).toUpperCase() === 'PUNCTAJ');
+            let punctaj = parseInt(q[pctKey] || 0);
+
             if(user === correct) {
                 results[currentIdx] = "correct";
-                currentScore += parseInt(q.Punctaj || 0);
+                currentScore += punctaj;
                 showInstantFeedback(correct, user);
                 updateNavStyles();
                 
-                if (currentIdx < 44) {
+                if (currentIdx < exam.length - 1) {
                     isPaused = true;
                     btn.innerText = "CORECT! SE TRECE LA URMĂTOAREA...";
                     btn.style.background = "var(--orange)";
@@ -256,11 +322,11 @@
                 results[currentIdx] = "wrong";
                 showInstantFeedback(correct, user);
                 updateNavStyles();
-                btn.innerText = (currentIdx === 44 ? "FINALIZEAZĂ" : "URMĂTOAREA");
+                btn.innerText = (currentIdx === exam.length - 1 ? "FINALIZEAZĂ" : "URMĂTOAREA");
                 btn.style.background = "var(--blue)";
             }
         } else {
-            if(currentIdx === 44) finish(); else move(1);
+            if(currentIdx === exam.length - 1) finish(); else move(1);
         }
     }
 
@@ -281,7 +347,7 @@
     }
 
     function jump(i) { if(isPaused) return; currentIdx = i; render(); }
-    function move(d) { currentIdx += d; if(currentIdx<0)currentIdx=0; if(currentIdx>44)currentIdx=44; render(); }
+    function move(d) { currentIdx += d; if(currentIdx<0)currentIdx=0; if(currentIdx > exam.length - 1) currentIdx = exam.length - 1; render(); }
 
     function finish() {
         saveHistory(currentScore);
@@ -301,6 +367,8 @@
         document.getElementById('historyList').innerHTML = h.map((x, i) => 
             `<div class="history-item"><span>Test #${h.length - i}</span> <b>${x.scor}p</b></div>`).join('');
     }
+    
+    loadHistory();
 </script>
 
 </body>
