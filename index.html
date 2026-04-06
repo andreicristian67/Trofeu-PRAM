@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Examen PRAM - Auto-Next</title>
+    <title>Examen PRAM - Auto-Next (Perfect Sync)</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
     <style>
         :root { --dark: #2c3e50; --blue: #3498db; --green: #27ae60; --red: #e74c3c; --orange: #f39c12; --gray: #ecf0f1; }
@@ -31,7 +31,6 @@
 
         #startScreen, #resultScreen { position: fixed; inset: 0; background: white; z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 20px; overflow-y: auto;}
         .history-panel { width: 100%; max-width: 800px; margin-top: 15px; background: white; padding: 10px; border-radius: 8px; font-size: 13px; }
-        #errorLog { color: red; font-size: 14px; margin-bottom: 15px; font-weight: bold; }
     </style>
 </head>
 <body>
@@ -39,8 +38,7 @@
 <div id="startScreen">
     <h1>📝 Examen PRAM</h1>
     <p>45 Întrebări | 150 Puncte</p>
-    <div id="loadStatus" style="margin-bottom:10px; color: var(--orange); font-weight: bold;">Se descarcă baza de date...</div>
-    <div id="errorLog"></div>
+    <div id="loadStatus" style="margin-bottom:10px; color: var(--orange); font-weight: bold;">Se aliniază și se descarcă datele...</div>
     <button id="startBtn" disabled onclick="initExam()" style="background:#ccc; padding: 15px 40px; font-size:18px; border-radius: 10px; cursor:not-allowed;">START EXAMEN</button>
 </div>
 
@@ -78,19 +76,54 @@
     let exam = [], currentIdx = 0, currentScore = 0;
     let answers = {}, results = {}, isPaused = false; 
 
-    // Inițializare descărcare
+    // Inițializare și reconstruire a bazei de date ignorând denumirile coloanelor
     window.onload = function() {
         Papa.parse("baza_date.csv?v=" + new Date().getTime(), {
             download: true,
-            header: true,
+            header: false, // Citim brut, fără a ne baza pe capul de tabel
             skipEmptyLines: true,
-            delimiter: ";", // Foarte important pentru fișierul tău
+            delimiter: ";", 
             complete: function(r) {
-                // Păstrăm doar întrebările care au răspuns corect completat
-                db = r.data.filter(q => q.Raspuns_Corect && q.Raspuns_Corect.trim() !== "");
+                let rows = r.data;
+                
+                // Începem de la 1 ca să sărim peste rândul cu titlurile coloanelor
+                for(let i=1; i < rows.length; i++) {
+                    // Curățăm celulele complet goale
+                    let parts = rows[i].filter(p => p !== null && p !== undefined && p.trim() !== '');
+                    
+                    if(parts.length < 5) continue; // Dacă e rând invalid, sărim peste
+                    
+                    // Logică matematică: ultimele 3 căsuțe nenule sunt MEREU: Răspuns, Categorie, Punctaj
+                    let punctaj = parts[parts.length - 1];
+                    let categorie = parts[parts.length - 2];
+                    let raspuns = parts[parts.length - 3];
+                    
+                    // Primele 2 căsuțe sunt ID-ul și Întrebarea
+                    let id = parts[0];
+                    let intrebare = parts[1];
+                    
+                    // Restul celulelor de la mijloc reprezintă variantele de răspuns (A, B, C, D, E)
+                    let options = parts.slice(2, parts.length - 3);
+                    
+                    let q = {
+                        ID: id,
+                        cleanId: parseInt(id.replace(/\D/g, '')) || 0,
+                        Intrebare: intrebare,
+                        Var_A: options[0] || "-",
+                        Var_B: options[1] || "-",
+                        Var_C: options[2] || "-",
+                        Var_D: options[3] || "-",
+                        Var_E: options.slice(4).join("; ") || "-", // Dacă a spart un răspuns cu ; îl refacem
+                        Raspuns_Corect: raspuns,
+                        Categorie: categorie,
+                        Punctaj: punctaj
+                    };
+                    
+                    db.push(q);
+                }
                 
                 if(db.length > 0) {
-                    document.getElementById('loadStatus').innerText = `Gata! Au fost încărcate ${db.length} întrebări valide.`;
+                    document.getElementById('loadStatus').innerText = `Perfect! S-au procesat ${db.length} întrebări valide.`;
                     document.getElementById('loadStatus').style.color = "green";
                     
                     const startBtn = document.getElementById('startBtn');
@@ -100,13 +133,13 @@
                     
                     loadHistory();
                 } else {
-                    document.getElementById('errorLog').innerText = "Eroare: Nu s-au găsit întrebări cu Răspuns Corect. Verifică denumirea coloanei 'Raspuns_Corect' în Excel.";
-                    document.getElementById('loadStatus').innerText = "";
+                    document.getElementById('loadStatus').innerText = "Eroare: Nu s-au putut procesa întrebările.";
+                    document.getElementById('loadStatus').style.color = "red";
                 }
             },
             error: function(err) {
-                document.getElementById('errorLog').innerText = "Eroare la descărcarea baza_date.csv: " + err.message;
-                document.getElementById('loadStatus').innerText = "";
+                document.getElementById('loadStatus').innerText = "Eroare la descărcarea baza_date.csv";
+                document.getElementById('loadStatus').style.color = "red";
             }
         });
     };
@@ -115,12 +148,12 @@
         let validQs = [...db].sort(() => 0.5 - Math.random());
         let pool = [];
 
-        // Funcție inteligentă de extragere pe categorii (ignoră diacritice și litere mari/mici)
+        // Extragere inteligentă pe categorii
         const extractCat = (keyword, count) => {
             let extracted = [];
             for (let i = validQs.length - 1; i >= 0; i--) {
                 let catVal = validQs[i].Categorie ? String(validQs[i].Categorie).toUpperCase() : "";
-                catVal = catVal.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+                catVal = catVal.normalize("NFD").replace(/[\u0300-\u036f]/g, ""); // Ignoră diacriticele
                 
                 if (catVal.includes(keyword)) {
                     extracted.push(validQs.splice(i, 1)[0]);
@@ -130,25 +163,18 @@
             return extracted;
         };
 
-        // Respectăm proporția
         pool.push(...extractCat("PSI", 2));
         pool.push(...extractCat("LEGISLATIE", 2));
         pool.push(...extractCat("MUNC", 2)); 
         pool.push(...extractCat("PROFESIONAL", 39));
 
-        // Dacă cumva lipsesc întrebări dintr-o categorie, completăm cu ce a rămas până la 45
+        // Completare automată dacă nu se găsesc destule pe anumite categorii
         while (pool.length < 45 && validQs.length > 0) {
             pool.push(validQs.pop());
         }
 
-        // Tăiem fix la 45 și sortăm numeric după ID pentru a arăta frumos în grilă
         exam = pool.slice(0, 45);
-        exam.sort((a, b) => parseInt(a.ID) - parseInt(b.ID));
-
-        if(exam.length === 0) {
-            alert("Baza de date este goală sau invalidă!");
-            return;
-        }
+        exam.sort((a, b) => a.cleanId - b.cleanId);
 
         document.getElementById('startScreen').style.display = 'none';
         buildNav();
@@ -165,8 +191,8 @@
         if(!q) return;
 
         let pct = parseInt(q.Punctaj) || 0;
-        document.getElementById('qMeta').innerText = `ID: ${q.ID || '?'} | ${q.Categorie || '?'} (${pct}p)`;
-        document.getElementById('qText').innerText = q.Intrebare || 'Eroare la textul întrebării.';
+        document.getElementById('qMeta').innerText = `ID: ${q.ID} | ${q.Categorie} (${pct}p)`;
+        document.getElementById('qText').innerText = q.Intrebare;
         document.getElementById('scoreDisplay').innerText = `SCOR: ${currentScore} / 150`;
         
         const area = document.getElementById('optionsArea');
@@ -221,7 +247,6 @@
         const q = exam[currentIdx];
 
         if(btn.innerText === "VERIFICĂ") {
-            // Extragem doar literele (A, B, C, D, E) din răspunsul corect, ignorând spații și virgule
             const correct = q.Raspuns_Corect.toUpperCase().replace(/[^A-E]/g, ''); 
             const user = answers[currentIdx] || "";
             let punctaj = parseInt(q.Punctaj) || 0;
@@ -236,7 +261,7 @@
                     isPaused = true;
                     btn.innerText = "CORECT! SE TRECE LA URMĂTOAREA...";
                     btn.style.background = "var(--orange)";
-                    setTimeout(() => { move(1); }, 2000); // 2 secunde Auto-Next
+                    setTimeout(() => { move(1); }, 2000); // 2 SECUNDE AUTO-NEXT
                 } else {
                     btn.innerText = "FINALIZEAZĂ";
                     btn.style.background = "var(--blue)";
