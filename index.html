@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Examen PRAM - Ultimul Fix</title>
+    <title>Examen PRAM - Auto-Next</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
     <style>
         :root { --dark: #2c3e50; --blue: #3498db; --green: #27ae60; --red: #e74c3c; --orange: #f39c12; --gray: #ecf0f1; }
@@ -29,10 +29,9 @@
         .btn-prev { background: #95a5a6; }
         .btn-action { background: var(--green); }
 
-        #startScreen, #resultScreen { position: fixed; inset: 0; background: white; z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 20px; overflow-y: auto; }
+        #startScreen, #resultScreen { position: fixed; inset: 0; background: white; z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 20px; overflow-y: auto;}
         .history-panel { width: 100%; max-width: 800px; margin-top: 15px; background: white; padding: 10px; border-radius: 8px; font-size: 13px; }
-        
-        #errorLog { color: red; font-weight: bold; font-size: 12px; background: #ffe6e6; padding: 10px; border-radius: 5px; margin-bottom: 15px; display: none; text-align: left; width: 100%; max-width: 90%; word-wrap: break-word;}
+        #errorLog { color: red; font-size: 14px; margin-bottom: 15px; font-weight: bold; }
     </style>
 </head>
 <body>
@@ -40,7 +39,7 @@
 <div id="startScreen">
     <h1>📝 Examen PRAM</h1>
     <p>45 Întrebări | 150 Puncte</p>
-    <div id="loadStatus" style="margin-bottom:10px; color: var(--orange); font-weight: bold;">Se descarcă datele...</div>
+    <div id="loadStatus" style="margin-bottom:10px; color: var(--orange); font-weight: bold;">Se descarcă baza de date...</div>
     <div id="errorLog"></div>
     <button id="startBtn" disabled onclick="initExam()" style="background:#ccc; padding: 15px 40px; font-size:18px; border-radius: 10px; cursor:not-allowed;">START EXAMEN</button>
 </div>
@@ -75,119 +74,52 @@
 </div>
 
 <script>
-    let dbRaw = [], answersRaw = [];
-    let db = []; 
+    let db = [];
     let exam = [], currentIdx = 0, currentScore = 0;
     let answers = {}, results = {}, isPaused = false; 
-    let filesLoaded = 0;
-    let errors = [];
 
-    function addError(msg) {
-        errors.push(msg);
-        const d = document.getElementById('errorLog');
-        d.style.display = 'block';
-        d.innerHTML = errors.join('<br>');
-    }
-
-    // Funcție agresivă de extragere a numerelor
-    function extractId(val) {
-        if (!val) return null;
-        const str = String(val).replace(/\D/g, '');
-        return str.length > 0 ? parseInt(str) : null;
-    }
-
-    function syncData() {
-        filesLoaded++;
-        if (filesLoaded === 2) {
-            
-            let ansDict = {};
-            // Parcurgem răspunsurile
-            answersRaw.forEach(row => {
-                // Extragem toate valorile de pe rând (ne bazăm doar pe poziție, nu pe nume coloane)
-                let values = Object.values(row);
-                if (values.length >= 2) {
-                    let id = extractId(values[0]); // Presupunem că ID-ul e în prima coloană
-                    let ans = String(values[1]).trim(); // Presupunem că Răspunsul e în a doua
+    // Inițializare descărcare
+    window.onload = function() {
+        Papa.parse("baza_date.csv?v=" + new Date().getTime(), {
+            download: true,
+            header: true,
+            skipEmptyLines: true,
+            delimiter: ";", // Foarte important pentru fișierul tău
+            complete: function(r) {
+                // Păstrăm doar întrebările care au răspuns corect completat
+                db = r.data.filter(q => q.Raspuns_Corect && q.Raspuns_Corect.trim() !== "");
+                
+                if(db.length > 0) {
+                    document.getElementById('loadStatus').innerText = `Gata! Au fost încărcate ${db.length} întrebări valide.`;
+                    document.getElementById('loadStatus').style.color = "green";
                     
-                    if(id !== null && ans) {
-                        ansDict[id] = ans;
-                    }
+                    const startBtn = document.getElementById('startBtn');
+                    startBtn.disabled = false;
+                    startBtn.style.background = "var(--green)";
+                    startBtn.style.cursor = "pointer";
+                    
+                    loadHistory();
+                } else {
+                    document.getElementById('errorLog').innerText = "Eroare: Nu s-au găsit întrebări cu Răspuns Corect. Verifică denumirea coloanei 'Raspuns_Corect' în Excel.";
+                    document.getElementById('loadStatus').innerText = "";
                 }
-            });
-
-            let mapate = 0;
-            // Parcurgem baza de date
-            dbRaw.forEach(row => {
-                let values = Object.values(row);
-                if (values.length > 0) {
-                     // Căutăm ID-ul în prima coloană
-                     let id = extractId(values[0]);
-                     
-                     if (id !== null && ansDict[id]) {
-                         // Reconstruim un obiect curat ca să nu ne batem capul cu numele coloanelor ciudate
-                         let qClean = {
-                             cleanId: id,
-                             ID: id,
-                             Raspuns_Corect: ansDict[id],
-                             Intrebare: values[1] || "Lipsă text",
-                             Var_A: values[2] || "",
-                             Var_B: values[3] || "",
-                             Var_C: values[4] || "",
-                             Var_D: values[5] || "",
-                             Var_E: values[6] || "",
-                             Categorie: values[7] || "PROFESIONAL", // Default fallback
-                             Punctaj: values[8] || "2"
-                         };
-                         db.push(qClean);
-                         mapate++;
-                     }
-                }
-            });
-
-            const statusEl = document.getElementById('loadStatus');
-            const startBtn = document.getElementById('startBtn');
-
-            if (mapate > 0) {
-                statusEl.innerText = `Gata! Au fost sincronizate perfect ${mapate} întrebări!`;
-                statusEl.style.color = "green";
-                startBtn.disabled = false;
-                startBtn.style.background = "var(--green)";
-                startBtn.style.cursor = "pointer";
-                loadHistory();
-            } else {
-                statusEl.innerText = "Eroare: S-au descărcat fișierele, dar niciun ID nu s-a potrivit!";
-                statusEl.style.color = "red";
-                addError("Eroare Critică: Coloanele nu s-au putut citi. Salvează fișierele CSV (Comma separated) standard, te rog!");
+            },
+            error: function(err) {
+                document.getElementById('errorLog').innerText = "Eroare la descărcarea baza_date.csv: " + err.message;
+                document.getElementById('loadStatus').innerText = "";
             }
-        }
-    }
-
-    Papa.parse("baza_date.csv", {
-        download: true, 
-        header: true, 
-        skipEmptyLines: true,
-        complete: function(r) { dbRaw = r.data; syncData(); },
-        error: function(err) { addError("Eroare la parsare baza_date.csv"); }
-    });
-
-    Papa.parse("raspunsuri.csv", {
-        download: true, 
-        header: true, 
-        skipEmptyLines: true,
-        complete: function(r) { answersRaw = r.data; syncData(); },
-        error: function(err) { addError("Eroare la parsare raspunsuri.csv"); }
-    });
+        });
+    };
 
     function initExam() {
         let validQs = [...db].sort(() => 0.5 - Math.random());
         let pool = [];
 
+        // Funcție inteligentă de extragere pe categorii (ignoră diacritice și litere mari/mici)
         const extractCat = (keyword, count) => {
             let extracted = [];
             for (let i = validQs.length - 1; i >= 0; i--) {
-                let q = validQs[i];
-                let catVal = q.Categorie ? String(q.Categorie).toUpperCase() : "";
-                
+                let catVal = validQs[i].Categorie ? String(validQs[i].Categorie).toUpperCase() : "";
                 catVal = catVal.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
                 
                 if (catVal.includes(keyword)) {
@@ -198,22 +130,23 @@
             return extracted;
         };
 
-        // Extragem întrebările. 
+        // Respectăm proporția
         pool.push(...extractCat("PSI", 2));
         pool.push(...extractCat("LEGISLATIE", 2));
         pool.push(...extractCat("MUNC", 2)); 
         pool.push(...extractCat("PROFESIONAL", 39));
 
-        // Completăm automat dacă lipsesc întrebări dintr-o categorie
+        // Dacă cumva lipsesc întrebări dintr-o categorie, completăm cu ce a rămas până la 45
         while (pool.length < 45 && validQs.length > 0) {
             pool.push(validQs.pop());
         }
 
+        // Tăiem fix la 45 și sortăm numeric după ID pentru a arăta frumos în grilă
         exam = pool.slice(0, 45);
-        exam.sort((a, b) => a.cleanId - b.cleanId);
+        exam.sort((a, b) => parseInt(a.ID) - parseInt(b.ID));
 
         if(exam.length === 0) {
-            alert("Examenul este gol! Eroare neprevăzută.");
+            alert("Baza de date este goală sau invalidă!");
             return;
         }
 
@@ -231,8 +164,9 @@
         const q = exam[currentIdx];
         if(!q) return;
 
-        document.getElementById('qMeta').innerText = `ID: ${q.ID || '?'} | ${q.Categorie || '?'} (${q.Punctaj || 0}p)`;
-        document.getElementById('qText').innerText = q.Intrebare || 'Eroare text.';
+        let pct = parseInt(q.Punctaj) || 0;
+        document.getElementById('qMeta').innerText = `ID: ${q.ID || '?'} | ${q.Categorie || '?'} (${pct}p)`;
+        document.getElementById('qText').innerText = q.Intrebare || 'Eroare la textul întrebării.';
         document.getElementById('scoreDisplay').innerText = `SCOR: ${currentScore} / 150`;
         
         const area = document.getElementById('optionsArea');
@@ -240,7 +174,6 @@
         
         ['A', 'B', 'C', 'D', 'E'].forEach(l => {
             let val = q[`Var_${l}`];
-            
             if(val && val.toString().trim() !== "" && val.toString().trim() !== "-") {
                 area.innerHTML += `
                     <div class="opt-btn ${ (answers[currentIdx] || "").includes(l) ? 'selected' : '' }" 
@@ -255,6 +188,7 @@
 
         const btn = document.getElementById('mainBtn');
         btn.disabled = false;
+        
         if(results[currentIdx]) {
             btn.innerText = (currentIdx === exam.length - 1 ? "FINALIZEAZĂ" : "URMĂTOAREA");
             btn.style.background = "var(--blue)";
@@ -287,9 +221,10 @@
         const q = exam[currentIdx];
 
         if(btn.innerText === "VERIFICĂ") {
+            // Extragem doar literele (A, B, C, D, E) din răspunsul corect, ignorând spații și virgule
             const correct = q.Raspuns_Corect.toUpperCase().replace(/[^A-E]/g, ''); 
             const user = answers[currentIdx] || "";
-            let punctaj = parseInt(q.Punctaj || 0);
+            let punctaj = parseInt(q.Punctaj) || 0;
 
             if(user === correct) {
                 results[currentIdx] = "correct";
@@ -301,7 +236,7 @@
                     isPaused = true;
                     btn.innerText = "CORECT! SE TRECE LA URMĂTOAREA...";
                     btn.style.background = "var(--orange)";
-                    setTimeout(() => { move(1); }, 2000);
+                    setTimeout(() => { move(1); }, 2000); // 2 secunde Auto-Next
                 } else {
                     btn.innerText = "FINALIZEAZĂ";
                     btn.style.background = "var(--blue)";
@@ -355,8 +290,6 @@
         document.getElementById('historyList').innerHTML = h.map((x, i) => 
             `<div class="history-item"><span>Test #${h.length - i}</span> <b>${x.scor}p</b></div>`).join('');
     }
-    
-    loadHistory();
 </script>
 
 </body>
