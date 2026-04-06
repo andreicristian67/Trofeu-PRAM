@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Examen PRAM - Perfect Edition</title>
+    <title>Examen PRAM - Perfect Edition & Recapitulare</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
     <style>
         :root { --dark: #2c3e50; --blue: #3498db; --green: #27ae60; --red: #e74c3c; --orange: #f39c12; --gray: #ecf0f1; }
@@ -25,9 +25,13 @@
         .opt-btn.selected { border-color: var(--blue); background: #ebf5fb; }
         
         .controls { display: flex; gap: 8px; }
-        button { flex: 1; padding: 12px; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 15px; color: white; }
+        button { flex: 1; padding: 12px; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 15px; color: white; transition: 0.2s; }
         .btn-prev { background: #95a5a6; }
         .btn-action { background: var(--green); }
+
+        /* Butoanele de pe ecranul de start */
+        .start-btn-group { display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 300px; margin-top: 15px; }
+        .btn-recap { background: var(--orange); display: none; }
 
         /* Stilul butonului de raportare */
         .report-btn { background: none; border: 1px solid var(--red); color: var(--red); padding: 5px 10px; border-radius: 4px; font-size: 11px; cursor: pointer; transition: 0.2s; font-weight: bold; display: flex; align-items: center; gap: 4px;}
@@ -46,7 +50,11 @@
     <p>45 Întrebări | 150 Puncte</p>
     <div id="loadStatus" style="margin-bottom:10px; color: var(--orange); font-weight: bold;">Se descarcă baza de date...</div>
     <div id="errorLog"></div>
-    <button id="startBtn" disabled onclick="initExam()" style="background:#ccc; padding: 15px 40px; font-size:18px; border-radius: 10px; cursor:not-allowed;">START EXAMEN</button>
+    
+    <div class="start-btn-group">
+        <button id="startBtn" disabled onclick="initExam()" style="background:#ccc; padding: 15px; font-size:16px; border-radius: 10px; cursor:not-allowed;">START EXAMEN</button>
+        <button id="recapBtn" class="btn-recap" onclick="initRecap()" style="padding: 15px; font-size:14px; border-radius: 10px;">🔄 RECAPITULARE</button>
+    </div>
 </div>
 
 <div class="nav-container">
@@ -55,10 +63,10 @@
 
 <div class="quiz-card" id="quizCard">
     <div class="stats-header">
-        <span id="scoreDisplay">SCOR: 0 / 150</span>
+        <span id="scoreDisplay">SCOR: 0</span>
         <div style="display: flex; gap: 10px; align-items: center;">
             <span id="qMeta" style="color:var(--blue)">-</span>
-            <button id="reportBtn" class="report-btn" onclick="trimiteRaport()">🚩 EROARE AICI</button>
+            <button id="reportBtn" class="report-btn" onclick="trimiteRaport()">🚩 EROARE</button>
         </div>
     </div>
     <div id="qText" class="q-text">Alege un ID sau pornește examenul...</div>
@@ -85,18 +93,19 @@
     let db = [];
     let exam = [], currentIdx = 0, currentScore = 0;
     let answers = {}, results = {}, isPaused = false; 
+    let wrongIDs = JSON.parse(localStorage.getItem('pram_wrongIDs') || "[]"); // Salvăm ID-urile greșite
+    let isRecapMode = false;
 
     // Încărcarea și procesarea fișierului
     window.onload = function() {
         Papa.parse("baza_date.csv?v=" + new Date().getTime(), {
             download: true,
-            header: false, // Citim brut, ignorând erorile din capul de tabel
+            header: false,
             skipEmptyLines: true,
             delimiter: ";", 
             complete: function(r) {
                 let rows = r.data;
                 for(let i=1; i < rows.length; i++) {
-                    // Scoatem orice celulă goală (;;;) generată de Excel
                     let parts = rows[i].filter(p => p !== null && p !== undefined && p.trim() !== '');
                     if(parts.length < 5) continue; 
                     
@@ -126,10 +135,13 @@
                 if(db.length > 0) {
                     document.getElementById('loadStatus').innerText = `Gata! ${db.length} întrebări valide încărcate.`;
                     document.getElementById('loadStatus').style.color = "green";
+                    
                     const startBtn = document.getElementById('startBtn');
                     startBtn.disabled = false;
                     startBtn.style.background = "var(--green)";
                     startBtn.style.cursor = "pointer";
+
+                    updateRecapButton();
                     loadHistory();
                 } else {
                     document.getElementById('loadStatus').innerText = "Eroare la citirea întrebărilor din fișier.";
@@ -139,7 +151,21 @@
         });
     };
 
+    function updateRecapButton() {
+        const recapBtn = document.getElementById('recapBtn');
+        // Ne asigurăm că ID-urile greșite salvate încă există în baza de date
+        const existingWrongQs = db.filter(q => wrongIDs.includes(q.cleanId));
+        
+        if(existingWrongQs.length > 0) {
+            recapBtn.style.display = "block";
+            recapBtn.innerText = `🔄 RECAPITULARE (${existingWrongQs.length})`;
+        } else {
+            recapBtn.style.display = "none";
+        }
+    }
+
     function initExam() {
+        isRecapMode = false;
         let validQs = [...db].sort(() => 0.5 - Math.random());
         let pool = [];
 
@@ -168,6 +194,21 @@
         exam = pool.slice(0, 45);
         exam.sort((a, b) => a.cleanId - b.cleanId);
 
+        startGameUI();
+    }
+
+    function initRecap() {
+        isRecapMode = true;
+        // Luăm doar întrebările care sunt în lista de greșeli, amestecate
+        let validQs = db.filter(q => wrongIDs.includes(q.cleanId)).sort(() => 0.5 - Math.random());
+        
+        // În modul recapitulare, îi dăm maxim 45 de greșeli o dată ca să nu fie copleșitor
+        exam = validQs.slice(0, 45);
+        
+        startGameUI();
+    }
+
+    function startGameUI() {
         document.getElementById('startScreen').style.display = 'none';
         buildNav();
         render();
@@ -183,9 +224,11 @@
         if(!q) return;
 
         let pct = parseInt(q.Punctaj) || 0;
+        let totalPct = isRecapMode ? "?" : "150";
+        
         document.getElementById('qMeta').innerText = `ID: ${q.ID} | ${q.Categorie} (${pct}p)`;
         document.getElementById('qText').innerText = q.Intrebare;
-        document.getElementById('scoreDisplay').innerText = `SCOR: ${currentScore} / 150`;
+        document.getElementById('scoreDisplay').innerText = isRecapMode ? "MOD RECAPITULARE" : `SCOR: ${currentScore} / 150`;
         
         const area = document.getElementById('optionsArea');
         area.innerHTML = "";
@@ -203,7 +246,7 @@
 
         updateNavStyles();
         isPaused = false;
-        resetReportBtn(); // Resetează butonul de raportare pentru noua întrebare
+        resetReportBtn(); 
 
         const btn = document.getElementById('mainBtn');
         btn.disabled = false;
@@ -247,6 +290,13 @@
             if(user === correct) {
                 results[currentIdx] = "correct";
                 currentScore += punctaj;
+                
+                // Dacă a răspuns corect, o ștergem din lista de greșeli (dacă era acolo)
+                if(wrongIDs.includes(q.cleanId)) {
+                    wrongIDs = wrongIDs.filter(id => id !== q.cleanId);
+                    localStorage.setItem('pram_wrongIDs', JSON.stringify(wrongIDs));
+                }
+
                 showInstantFeedback(correct, user);
                 updateNavStyles();
                 
@@ -261,6 +311,13 @@
                 }
             } else {
                 results[currentIdx] = "wrong";
+                
+                // Dacă a răspuns greșit, salvăm ID-ul în lista de greșeli
+                if(!wrongIDs.includes(q.cleanId)) {
+                    wrongIDs.push(q.cleanId);
+                    localStorage.setItem('pram_wrongIDs', JSON.stringify(wrongIDs));
+                }
+
                 showInstantFeedback(correct, user);
                 updateNavStyles();
                 btn.innerText = (currentIdx === exam.length - 1 ? "FINALIZEAZĂ" : "URMĂTOAREA");
@@ -291,10 +348,19 @@
     function move(d) { currentIdx += d; if(currentIdx<0)currentIdx=0; if(currentIdx > exam.length - 1) currentIdx = exam.length - 1; render(); }
 
     function finish() {
-        saveHistory(currentScore);
+        if(!isRecapMode) saveHistory(currentScore);
+        
         document.getElementById('resultScreen').style.display = 'flex';
-        document.getElementById('finalScoreText').innerText = currentScore + " / 150";
-        document.getElementById('verdictText').innerText = currentScore >= 120 ? "ADMIS 🎖️" : "RESPINS ❌";
+        
+        if(isRecapMode) {
+            document.getElementById('verdictText').innerText = "RECAPITULARE FINALIZATĂ";
+            let remaining = exam.filter(q => wrongIDs.includes(q.cleanId)).length;
+            document.getElementById('finalScoreText').innerText = remaining > 0 ? `Mai ai ${remaining} de învățat!` : "Ai învățat tot! 🎉";
+            document.getElementById('finalScoreText').style.fontSize = "30px";
+        } else {
+            document.getElementById('finalScoreText').innerText = currentScore + " / 150";
+            document.getElementById('verdictText').innerText = currentScore >= 120 ? "ADMIS 🎖️" : "RESPINS ❌";
+        }
     }
 
     function saveHistory(s) {
@@ -320,7 +386,6 @@
         btn.innerText = "⏳ Se trimite...";
         btn.disabled = true;
 
-        // Link-ul tău de la Formspree integrat!
         const FORMSPREE_URL = "https://formspree.io/f/xjgpjzqg"; 
 
         try {
@@ -333,8 +398,6 @@
                     Mesaj: "Utilizatorul a marcat aceasta intrebare ca fiind gresita in baza de date."
                 })
             });
-
-            // Schimbam butonul sa arate ca s-a trimis cu succes
             btn.innerText = "✔️ Trimis!";
         } catch(e) {
             btn.innerText = "Eroare. Reîncearcă!";
@@ -344,7 +407,7 @@
 
     function resetReportBtn() {
         const btn = document.getElementById('reportBtn');
-        btn.innerText = "🚩 EROARE AICI";
+        btn.innerText = "🚩 EROARE";
         btn.disabled = false;
     }
 </script>
