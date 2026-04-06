@@ -66,7 +66,7 @@
         <span id="scoreDisplay">SCOR: 0</span>
         <div style="display: flex; gap: 10px; align-items: center;">
             <span id="qMeta" style="color:var(--blue)">-</span>
-            <button id="reportBtn" class="report-btn" onclick="trimiteRaport()">🚩 EROARE</button>
+            <button id="reportBtn" class="report-btn" onclick="trimiteRaport()">🚩 RAPORTARE</button>
         </div>
     </div>
     <div id="qText" class="q-text">Alege un ID sau pornește examenul...</div>
@@ -93,10 +93,9 @@
     let db = [];
     let exam = [], currentIdx = 0, currentScore = 0;
     let answers = {}, results = {}, isPaused = false; 
-    let wrongIDs = JSON.parse(localStorage.getItem('pram_wrongIDs') || "[]"); // Salvăm ID-urile greșite
+    let wrongIDs = JSON.parse(localStorage.getItem('pram_wrongIDs') || "[]"); 
     let isRecapMode = false;
 
-    // Încărcarea și procesarea fișierului
     window.onload = function() {
         Papa.parse("baza_date.csv?v=" + new Date().getTime(), {
             download: true,
@@ -153,7 +152,6 @@
 
     function updateRecapButton() {
         const recapBtn = document.getElementById('recapBtn');
-        // Ne asigurăm că ID-urile greșite salvate încă există în baza de date
         const existingWrongQs = db.filter(q => wrongIDs.includes(q.cleanId));
         
         if(existingWrongQs.length > 0) {
@@ -199,12 +197,8 @@
 
     function initRecap() {
         isRecapMode = true;
-        // Luăm doar întrebările care sunt în lista de greșeli, amestecate
         let validQs = db.filter(q => wrongIDs.includes(q.cleanId)).sort(() => 0.5 - Math.random());
-        
-        // În modul recapitulare, îi dăm maxim 45 de greșeli o dată ca să nu fie copleșitor
         exam = validQs.slice(0, 45);
-        
         startGameUI();
     }
 
@@ -291,7 +285,6 @@
                 results[currentIdx] = "correct";
                 currentScore += punctaj;
                 
-                // Dacă a răspuns corect, o ștergem din lista de greșeli (dacă era acolo)
                 if(wrongIDs.includes(q.cleanId)) {
                     wrongIDs = wrongIDs.filter(id => id !== q.cleanId);
                     localStorage.setItem('pram_wrongIDs', JSON.stringify(wrongIDs));
@@ -304,7 +297,7 @@
                     isPaused = true;
                     btn.innerText = "CORECT! SE TRECE LA URMĂTOAREA...";
                     btn.style.background = "var(--orange)";
-                    setTimeout(() => { move(1); }, 1500); // 1.5 SECUNDE AUTO-NEXT
+                    setTimeout(() => { move(1); }, 1500);
                 } else {
                     btn.innerText = "FINALIZEAZĂ";
                     btn.style.background = "var(--blue)";
@@ -312,7 +305,6 @@
             } else {
                 results[currentIdx] = "wrong";
                 
-                // Dacă a răspuns greșit, salvăm ID-ul în lista de greșeli
                 if(!wrongIDs.includes(q.cleanId)) {
                     wrongIDs.push(q.cleanId);
                     localStorage.setItem('pram_wrongIDs', JSON.stringify(wrongIDs));
@@ -375,9 +367,6 @@
             `<div class="history-item"><span>Test #${h.length - i}</span> <b>${x.scor}p</b></div>`).join('');
     }
 
-    // ==========================================
-    // FUNCTIA DE RAPORTARE SILENTIOASA FORMSPREE
-    // ==========================================
     async function trimiteRaport() {
         const q = exam[currentIdx];
         if(!q) return;
@@ -407,7 +396,7 @@
 
     function resetReportBtn() {
         const btn = document.getElementById('reportBtn');
-        btn.innerText = "🚩 EROARE";
+        btn.innerText = "🚩 RAPORTARE";
         btn.disabled = false;
     }
 </script>
