@@ -37,19 +37,22 @@
         .report-btn:disabled { border-color: var(--green); color: var(--green); background: #ebf5eb; cursor: default; }
 
         #startScreen, #resultScreen { position: fixed; inset: 0; background: white; z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 20px; overflow-y: auto;}
-        .history-panel { width: 100%; max-width: 800px; margin-top: 15px; background: white; padding: 10px; border-radius: 8px; font-size: 13px; }
+        .history-panel { width: 100%; max-width: 800px; margin-top: 15px; background: white; padding: 15px; border-radius: 8px; font-size: 13px; }
         #errorLog { color: red; font-size: 14px; margin-bottom: 15px; font-weight: bold; }
 
-        /* Stiluri Istoric pe coloane - Format Simplu */
+        /* Stiluri NOI pentru Grila de Istoric */
         #historyList {
-            column-width: 120px;
-            column-gap: 20px;
-            margin-top: 10px;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); /* Creaza coloane egale automat */
+            gap: 8px 25px; /* Spatiu vertical si orizontal intre teste */
+            margin-top: 15px;
         }
         .history-item {
-            break-inside: avoid; 
-            page-break-inside: avoid;
-            margin-bottom: 4px;
+            display: flex; 
+            justify-content: space-between; /* Aliniaza Textul in stanga si Punctajul in dreapta */
+            font-size: 14px;
+            padding-bottom: 4px;
+            border-bottom: 1px dashed #e0e0e0; /* O linie de ghidaj foarte subtire */
         }
     </style>
 </head>
@@ -414,7 +417,10 @@
     function loadHistory() {
         let h = JSON.parse(localStorage.getItem('pram_h') || "[]");
         document.getElementById('historyList').innerHTML = h.map((x, i) => 
-            `<div class="history-item">Test #${h.length - i} <b>${x.scor}p</b></div>`).join('');
+            `<div class="history-item">
+                <span style="color:#555;">Test #${h.length - i}</span> 
+                <b style="color:var(--dark);">${x.scor}p</b>
+            </div>`).join('');
     }
 
     async function trimiteRaport() {
