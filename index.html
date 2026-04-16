@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Trofeu PRAM </title>
+    <title>Trofeu PRAM</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
     <style>
         :root { --dark: #2c3e50; --blue: #3498db; --green: #27ae60; --red: #e74c3c; --orange: #f39c12; --gray: #ecf0f1; }
@@ -41,6 +41,22 @@
         #startScreen, #resultScreen { position: fixed; inset: 0; background: white; z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 20px; overflow-y: auto;}
         .history-panel { width: 100%; max-width: 800px; margin-top: 15px; background: white; padding: 10px; border-radius: 8px; font-size: 13px; }
         #errorLog { color: red; font-size: 14px; margin-bottom: 15px; font-weight: bold; }
+
+        /* Stiluri noi pentru Istoric pe coloane */
+        #historyList {
+            column-width: 200px; /* Latimea coloanei */
+            column-gap: 30px;    /* Spatiul dintre coloane */
+            margin-top: 10px;
+        }
+        .history-item {
+            break-inside: avoid; 
+            page-break-inside: avoid;
+            display: flex; 
+            justify-content: space-between; 
+            border-bottom: 1px solid #eee; 
+            padding: 6px 0;
+            font-size: 13px;
+        }
     </style>
 </head>
 <body>
@@ -210,12 +226,10 @@
         let swapCount = 0;
 
         while(score !== 150 && swapCount < maxSwaps && remainingPool.length > 0) {
-            // Alegem o întrebare la întâmplare din test
             let idxTest = Math.floor(Math.random() * allSelected.length);
             let qTest = allSelected[idxTest];
             let pctTest = parseInt(qTest.Punctaj) || 0;
 
-            // Găsim o întrebare din rezervă DIN ACEEAȘI CATEGORIE (ca să nu stricăm ratio-ul de 2/2/2/39)
             let posibileRezerve = remainingPool.filter(q => q.cleanCat === qTest.cleanCat);
             
             if (posibileRezerve.length > 0) {
@@ -223,17 +237,15 @@
                 let qRezerva = posibileRezerve[idxRezerva];
                 let pctRezerva = parseInt(qRezerva.Punctaj) || 0;
 
-                // Cât am câștiga/pierde dacă le-am schimba între ele?
                 let castigNet = pctRezerva - pctTest;
 
-                // Dacă schimbul ne apropie mai mult de suma de 150, îl facem!
                 if (Math.abs(150 - (score + castigNet)) < Math.abs(150 - score)) {
-                    allSelected[idxTest] = qRezerva; // punem noua întrebare în test
+                    allSelected[idxTest] = qRezerva; 
                     
                     let idxInRemaining = remainingPool.indexOf(qRezerva);
-                    remainingPool[idxInRemaining] = qTest; // trimitem vechea întrebare pe banca de rezerve
+                    remainingPool[idxInRemaining] = qTest; 
                     
-                    score += castigNet; // actualizăm scorul live
+                    score += castigNet; 
                 }
             }
             swapCount++;
@@ -242,7 +254,6 @@
         exam = allSelected;
         exam.sort((a, b) => a.cleanId - b.cleanId);
         
-        // Scorul final asigurat
         maxExamScore = score; 
 
         startGameUI();
@@ -411,13 +422,16 @@
     function saveHistory(s) {
         let h = JSON.parse(localStorage.getItem('pram_h') || "[]");
         h.unshift({ scor: s, data: new Date().toLocaleDateString() });
-        localStorage.setItem('pram_h', JSON.stringify(h.slice(0, 10)));
+        localStorage.setItem('pram_h', JSON.stringify(h.slice(0, 60))); 
     }
 
     function loadHistory() {
         let h = JSON.parse(localStorage.getItem('pram_h') || "[]");
         document.getElementById('historyList').innerHTML = h.map((x, i) => 
-            `<div class="history-item"><span>Test #${h.length - i}</span> <b>${x.scor}p</b></div>`).join('');
+            `<div class="history-item">
+                <span>Test #${h.length - i} <small style="color:#999">(${x.data})</small></span>
+                <b style="color:var(--blue);">${x.scor} / 150p</b>
+            </div>`).join('');
     }
 
     async function trimiteRaport() {
