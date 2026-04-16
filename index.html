@@ -37,26 +37,26 @@
         .report-btn:disabled { border-color: var(--green); color: var(--green); background: #ebf5eb; cursor: default; }
 
         #startScreen, #resultScreen { position: fixed; inset: 0; background: white; z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 20px; overflow-y: auto;}
+        
         .history-panel { width: 100%; max-width: 800px; margin-top: 15px; background: white; padding: 15px; border-radius: 8px; font-size: 13px; }
         #errorLog { color: red; font-size: 14px; margin-bottom: 15px; font-weight: bold; }
 
-       /* Stiluri NOI pentru Istoric - Sus în Jos, apoi Dreapta */
+        /* Stiluri ISTORIC - Pura functionalitate, FARA Bold */
         #historyList {
             display: flex;
             flex-direction: column;
             flex-wrap: wrap;
-            max-height: 320px; /* Forțează trecerea pe coloana 2 abia după ~10 teste */
-            gap: 8px 40px; /* Spațiu între rânduri și între coloane */
-            margin-top: 15px;
+            max-height: 250px; /* Inaltime maxima inainte sa treaca pe urmatoarea coloana */
+            gap: 4px 40px; /* Spatiu mic intre randuri, spatiu generos intre coloane */
+            margin-top: 10px;
             align-content: flex-start;
         }
         .history-item {
-            width: 140px; /* Lățimea fixă a coloanei */
+            width: 100px; /* Coloana fixa cat incape textul */
             display: flex; 
             justify-content: space-between; 
-            font-size: 14px;
-            padding-bottom: 4px;
-            border-bottom: 1px dashed #e0e0e0; /* Linie subtilă de ghidaj */
+            font-size: 13px; /* Font mic, la fel ca originalul */
+            font-weight: normal; /* FARA Bold */
         }
     </style>
 </head>
@@ -96,7 +96,7 @@
 </div>
 
 <div class="history-panel">
-    <strong>📜 Istoric Scoruri:</strong>
+    <strong style="display:block; margin-bottom: 8px;">📜 Istoric Scoruri:</strong>
     <div id="historyList"></div>
 </div>
 
@@ -422,8 +422,8 @@
         let h = JSON.parse(localStorage.getItem('pram_h') || "[]");
         document.getElementById('historyList').innerHTML = h.map((x, i) => 
             `<div class="history-item">
-                <span style="color:#555;">Test #${h.length - i}</span> 
-                <b style="color:var(--dark);">${x.scor}p</b>
+                <span>Test #${h.length - i}</span> 
+                <span>${x.scor}p</span>
             </div>`).join('');
     }
 
