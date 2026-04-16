@@ -29,11 +29,9 @@
         .btn-prev { background: #95a5a6; }
         .btn-action { background: var(--green); }
 
-        /* Butoanele de pe ecranul de start */
         .start-btn-group { display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 300px; margin-top: 15px; }
         .btn-recap { background: var(--orange); display: none; }
 
-        /* Stilul butonului de raportare */
         .report-btn { background: none; border: 1px solid var(--red); color: var(--red); padding: 5px 10px; border-radius: 4px; font-size: 11px; cursor: pointer; transition: 0.2s; font-weight: bold; display: flex; align-items: center; gap: 4px;}
         .report-btn:hover { background: var(--red); color: white; }
         .report-btn:disabled { border-color: var(--green); color: var(--green); background: #ebf5eb; cursor: default; }
@@ -42,20 +40,16 @@
         .history-panel { width: 100%; max-width: 800px; margin-top: 15px; background: white; padding: 10px; border-radius: 8px; font-size: 13px; }
         #errorLog { color: red; font-size: 14px; margin-bottom: 15px; font-weight: bold; }
 
-        /* Stiluri noi pentru Istoric pe coloane */
+        /* Stiluri Istoric pe coloane - Format Simplu */
         #historyList {
-            column-width: 200px; /* Latimea coloanei */
-            column-gap: 30px;    /* Spatiul dintre coloane */
+            column-width: 120px;
+            column-gap: 20px;
             margin-top: 10px;
         }
         .history-item {
             break-inside: avoid; 
             page-break-inside: avoid;
-            display: flex; 
-            justify-content: space-between; 
-            border-bottom: 1px solid #eee; 
-            padding: 6px 0;
-            font-size: 13px;
+            margin-bottom: 4px;
         }
     </style>
 </head>
@@ -111,6 +105,7 @@
     let answers = {}, results = {}, isPaused = false; 
     let wrongIDs = JSON.parse(localStorage.getItem('pram_wrongIDs') || "[]"); 
     let isRecapMode = false;
+    let maxExamScore = 150;
 
     window.onload = function() {
         Papa.parse("baza_date.csv?v=" + new Date().getTime(), {
@@ -181,7 +176,6 @@
     function initExam() {
         isRecapMode = false;
         
-        // 1. Optimizare categorii pentru viteză
         for(let q of db) {
             if(!q.cleanCat) {
                 let catVal = q.Categorie ? String(q.Categorie).toUpperCase() : "";
@@ -193,7 +187,6 @@
             return db.filter(q => q.cleanCat.includes(keyword)).sort(() => 0.5 - Math.random());
         }
 
-        // 2. Creăm rezervele pentru fiecare categorie
         let pools = {
             "PSI": getCat("PSI"),
             "LEG": getCat("LEGISLATIE"),
@@ -201,7 +194,6 @@
             "PRO": getCat("PROFESIONAL")
         };
 
-        // 3. Extragem exact cota necesară pentru examen
         let examObj = {
             "PSI": pools.PSI.splice(0, 2),
             "LEG": pools.LEG.splice(0, 2),
@@ -210,18 +202,14 @@
         };
 
         let allSelected = [].concat(...Object.values(examObj));
-        let remainingPool = [].concat(...Object.values(pools)); // restul întrebărilor rămase
+        let remainingPool = [].concat(...Object.values(pools));
 
-        // Dacă baza de date e mică, tragem la sorți din ce a rămas ca să facem 45 de întrebări
         while(allSelected.length < 45 && remainingPool.length > 0) {
             remainingPool.sort(() => 0.5 - Math.random());
             allSelected.push(remainingPool.pop());
         }
 
-        // 4. Calculăm scorul inițial
         let score = allSelected.reduce((sum, q) => sum + (parseInt(q.Punctaj) || 0), 0);
-
-        // 5. ALGORITMUL DE AJUSTARE FINĂ (Smart Swap)
         let maxSwaps = 5000;
         let swapCount = 0;
 
@@ -253,7 +241,6 @@
 
         exam = allSelected;
         exam.sort((a, b) => a.cleanId - b.cleanId);
-        
         maxExamScore = score; 
 
         startGameUI();
@@ -282,7 +269,6 @@
         if(!q) return;
 
         let pct = parseInt(q.Punctaj) || 0;
-        let totalPct = isRecapMode ? "?" : "150";
         
         document.getElementById('qMeta').innerText = `ID: ${q.ID} | ${q.Categorie} (${pct}p)`;
         document.getElementById('qText').innerText = q.Intrebare;
@@ -428,10 +414,7 @@
     function loadHistory() {
         let h = JSON.parse(localStorage.getItem('pram_h') || "[]");
         document.getElementById('historyList').innerHTML = h.map((x, i) => 
-            `<div class="history-item">
-                <span>Test #${h.length - i} <small style="color:#999">(${x.data})</small></span>
-                <b style="color:var(--blue);">${x.scor} / 150p</b>
-            </div>`).join('');
+            `<div class="history-item">Test #${h.length - i} <b>${x.scor}p</b></div>`).join('');
     }
 
     async function trimiteRaport() {
