@@ -41,23 +41,40 @@
         .history-panel { width: 100%; max-width: 800px; margin-top: 15px; background: white; padding: 15px; border-radius: 8px; font-size: 13px; }
         #errorLog { color: red; font-size: 14px; margin-bottom: 15px; font-weight: bold; }
 
-        /* Stiluri ISTORIC - Pura functionalitate, FARA Bold */
         #historyList {
             display: flex;
             flex-direction: column;
             flex-wrap: wrap;
-            max-height: 250px; /* Inaltime maxima inainte sa treaca pe urmatoarea coloana */
-            gap: 4px 40px; /* Spatiu mic intre randuri, spatiu generos intre coloane */
+            max-height: 250px; 
+            gap: 4px 40px; 
             margin-top: 10px;
             align-content: flex-start;
         }
         .history-item {
-            width: 100px; /* Coloana fixa cat incape textul */
+            width: 100px; 
             display: flex; 
             justify-content: space-between; 
-            font-size: 13px; /* Font mic, la fel ca originalul */
-            font-weight: normal; /* FARA Bold */
+            font-size: 13px; 
+            font-weight: normal; 
         }
+
+        /* Stiluri MODUL STUDIU (Scroll Continuu) */
+        #studyScreen { position: fixed; inset: 0; background: #f4f7f6; z-index: 200; display: none; flex-direction: column; padding: 15px; overflow-y: auto; scroll-behavior: smooth; }
+        .study-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; background: var(--dark); color: white; padding: 15px; border-radius: 8px; flex-shrink: 0; }
+        .close-study { background: var(--red); padding: 8px 15px; border-radius: 6px; font-size: 14px; cursor: pointer; border: none; color: white; font-weight: bold; }
+        
+        .study-content-area { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); flex-grow: 1; }
+        .study-nav-scroll { display: flex; gap: 10px; margin-bottom: 25px; overflow-x: auto; padding-bottom: 10px; position: sticky; top: -20px; background: white; padding-top: 20px; z-index: 10; border-bottom: 2px solid #eee; }
+        .nav-anchor { background: #bdc3c7; color: var(--dark); padding: 10px 20px; border-radius: 20px; font-size: 14px; text-decoration: none; font-weight: bold; transition: 0.2s; white-space: nowrap; }
+        .nav-anchor:hover { background: var(--blue); color: white; }
+        
+        .eq-section { margin-bottom: 50px; padding-bottom: 20px; }
+        .eq-title { background: var(--dark); color: white; padding: 12px; border-radius: 6px; margin-top: 0; }
+        
+        .study-grid { display: grid; grid-template-columns: 1fr; gap: 15px; margin-bottom: 30px; }
+        .study-card { border-left: 4px solid var(--blue); padding: 12px 15px; background: #f9f9f9; border-radius: 4px; }
+        .defect-card { border-left-color: var(--red); background: #fdf3f2; }
+        .study-card hr { border: none; border-top: 1px dashed #ccc; margin: 8px 0; }
     </style>
 </head>
 <body>
@@ -71,6 +88,7 @@
     <div class="start-btn-group">
         <button id="startBtn" disabled onclick="initExam()" style="background:#ccc; padding: 15px; font-size:16px; border-radius: 10px; cursor:not-allowed;">START EXAMEN</button>
         <button id="recapBtn" class="btn-recap" onclick="initRecap()" style="padding: 15px; font-size:14px; border-radius: 10px;">🔄 RECAPITULARE</button>
+        <button id="studyBtn" onclick="openStudy()" style="padding: 15px; font-size:14px; border-radius: 10px; background: var(--blue); display: none;">📖 MODUL STUDIU</button>
     </div>
 </div>
 
@@ -106,6 +124,14 @@
     <button onclick="location.reload()" style="background:var(--dark); padding: 10px 30px;">REIA TESTUL</button>
 </div>
 
+<div id="studyScreen">
+    <div class="study-header">
+        <h2 style="margin: 0; font-size: 18px;">📖 Modul de Studiu & Echipamente</h2>
+        <button class="close-study" onclick="closeStudy()">❌ ÎNCHIDE</button>
+    </div>
+    <div class="study-content-area" id="studyContent">Se încarcă datele...</div>
+</div>
+
 <script>
     let db = [];
     let exam = [], currentIdx = 0, currentScore = 0;
@@ -113,8 +139,10 @@
     let wrongIDs = JSON.parse(localStorage.getItem('pram_wrongIDs') || "[]"); 
     let isRecapMode = false;
     let maxExamScore = 150;
+    let studyData = {}; // Variabila pentru modul de studiu
 
     window.onload = function() {
+        // Incarcam baza de date principala pentru Examene
         Papa.parse("baza_date.csv?v=" + new Date().getTime(), {
             download: true,
             header: false,
@@ -163,6 +191,33 @@
                 } else {
                     document.getElementById('loadStatus').innerText = "Eroare la citirea întrebărilor din fișier.";
                     document.getElementById('loadStatus').style.color = "red";
+                }
+            }
+        });
+
+        // Incarcam separat baza de date pentru Modul de Studiu
+        Papa.parse("studiu.csv?v=" + new Date().getTime(), {
+            download: true,
+            header: true,
+            skipEmptyLines: true,
+            delimiter: ";",
+            complete: function(r) {
+                r.data.forEach(row => {
+                    if(!row.Echipament) return; // ignora randurile goale
+                    if(!studyData[row.Echipament]) {
+                        studyData[row.Echipament] = { Intrebare: [], Defect: [] };
+                    }
+                    if(row.Tip && studyData[row.Echipament][row.Tip]) {
+                        studyData[row.Echipament][row.Tip].push({
+                            title: row.Titlu,
+                            content: row.Continut
+                        });
+                    }
+                });
+                
+                // Afisam butonul de studiu doar daca s-au gasit date
+                if(Object.keys(studyData).length > 0) {
+                    document.getElementById('studyBtn').style.display = "block";
                 }
             }
         });
@@ -458,6 +513,59 @@
         const btn = document.getElementById('reportBtn');
         btn.innerText = "🚩 RAPORTARE";
         btn.disabled = false;
+    }
+
+    // --- FUNCTII PENTRU MODUL STUDIU ---
+    function openStudy() {
+        document.getElementById('startScreen').style.display = 'none';
+        document.getElementById('studyScreen').style.display = 'flex';
+        renderStudyAll();
+    }
+
+    function closeStudy() {
+        document.getElementById('studyScreen').style.display = 'none';
+        document.getElementById('startScreen').style.display = 'flex';
+    }
+
+    function renderStudyAll() {
+        const contentArea = document.getElementById('studyContent');
+        let html = ``;
+
+        // 1. Generam Bara de navigare lipicioasa (Sticky) sus
+        html += `<div class="study-nav-scroll">`;
+        Object.keys(studyData).forEach(eq => {
+            html += `<a href="#sec-${eq}" class="nav-anchor">Mergi la ${eq}</a>`;
+        });
+        html += `</div>`;
+
+        // 2. Generam continutul, echipament sub echipament
+        Object.keys(studyData).forEach(eq => {
+            html += `<div id="sec-${eq}" class="eq-section">`;
+            html += `<h2 class="eq-title">⚙️ Echipament: ${eq}</h2>`;
+
+            // Intrebarile pentru echipamentul curent
+            let qna = studyData[eq].Intrebare;
+            if(qna && qna.length > 0) {
+                html += `<h3 style="color: var(--blue)">❓ Întrebări și Răspunsuri</h3><div class="study-grid">`;
+                qna.forEach(item => {
+                    html += `<div class="study-card"><strong style="font-size:15px;">Î: ${item.title}</strong><hr><span style="color:var(--dark)"><strong>R:</strong> ${item.content}</span></div>`;
+                });
+                html += `</div>`;
+            }
+
+            // Defectele pentru echipamentul curent
+            let defects = studyData[eq].Defect;
+            if(defects && defects.length > 0) {
+                html += `<h3 style="color: var(--red)">⚠️ Defecte și Efecte</h3><div class="study-grid">`;
+                defects.forEach(item => {
+                    html += `<div class="study-card defect-card"><strong style="color:var(--red)">${item.title}</strong><hr><span style="color:var(--dark)"><strong>Efect:</strong> ${item.content}</span></div>`;
+                });
+                html += `</div>`;
+            }
+            html += `</div>`; // Inchidem sectiunea echipamentului
+        });
+
+        contentArea.innerHTML = html;
     }
 </script>
 
