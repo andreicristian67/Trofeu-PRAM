@@ -482,7 +482,7 @@
             </div>`).join('');
     }
 
-    async function trimiteRaport() {
+        async function trimiteRaport() {
         const q = exam[currentIdx];
         if(!q) return;
 
@@ -490,14 +490,13 @@
         btn.innerText = "⏳ Se trimite...";
         btn.disabled = true;
 
-        const FORMSPREE_URL = "https://formspree.io/f/xjgpjzqg"; 
-
         try {
-            await fetch(FORMSPREE_URL, {
+            await fetch("https://api.web3forms.com/submit", {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
                 body: JSON.stringify({
-                    Subiect: "⚠️ Raportare eroare grila PRAM",
+                    access_key: "1aaf654f-a318-4feb-9183-ab3649c6da3e",
+                    subject: "⚠️ Raportare eroare grila PRAM",
                     ID_Intrebare: q.ID,
                     Mesaj: "Utilizatorul a marcat aceasta intrebare ca fiind gresita in baza de date."
                 })
@@ -508,6 +507,7 @@
             btn.disabled = false;
         }
     }
+
 
     function resetReportBtn() {
         const btn = document.getElementById('reportBtn');
