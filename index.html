@@ -140,6 +140,7 @@
     let isRecapMode = false;
     let maxExamScore = 150;
     let studyData = {}; // Variabila pentru modul de studiu
+    let amestecuriIntrebari = {}; // Memoreaza ordinea amestecata a variantelor pentru fiecare intrebare din test
 
     window.onload = function() {
         // Incarcam baza de date principala pentru Examene
@@ -237,6 +238,7 @@
 
     function initExam() {
         isRecapMode = false;
+        amestecuriIntrebari = {}; // Reseteaza amestecul precedent
         
         for(let q of db) {
             if(!q.cleanCat) {
@@ -310,6 +312,7 @@
 
     function initRecap() {
         isRecapMode = true;
+        amestecuriIntrebari = {}; // Reseteaza amestecul precedent
         let validQs = db.filter(q => wrongIDs.includes(q.cleanId)).sort(() => 0.5 - Math.random());
         exam = validQs.slice(0, 45);
         startGameUI();
@@ -338,16 +341,36 @@
         
         const area = document.getElementById('optionsArea');
         area.innerHTML = "";
-        
-        ['A', 'B', 'C', 'D', 'E'].forEach(l => {
-            let val = q[`Var_${l}`];
-            if(val && val.toString().trim() !== "" && val.toString().trim() !== "-") {
-                area.innerHTML += `
-                    <div class="opt-btn ${ (answers[currentIdx] || "").includes(l) ? 'selected' : '' }" 
-                         onclick="toggleOpt(this, '${l}')" id="opt-${l}">
-                         <strong>${l}.</strong> &nbsp; ${val}
-                    </div>`;
+
+        // Daca nu am generat deja ordinea amestecata pentru intrebarea curenta, o generam acum
+        if (!amestecuriIntrebari[currentIdx]) {
+            let valide = [];
+            ['A', 'B', 'C', 'D', 'E'].forEach(l => {
+                let val = q[`Var_${l}`];
+                if(val && val.toString().trim() !== "" && val.toString().trim() !== "-") {
+                    valide.push({ literaOriginala: l, text: val });
+                }
+            });
+            // Algoritmul Fisher-Yates pentru amestecarea variantelor valide
+            for (let i = valide.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [valide[i], valide[j]] = [valide[j], valide[i]];
             }
+            amestecuriIntrebari[currentIdx] = valide;
+        }
+
+        // Randam variantele amestecate din cache-ul local al intrebarii curentIdx
+        let varianteAmestecate = amestecuriIntrebari[currentIdx];
+        varianteAmestecate.forEach((varianta, index) => {
+            let literaAfisata = String.fromCharCode(65 + index); // Genereaza dinamic A, B, C, D...
+            let literaOriginala = varianta.literaOriginala;
+            let esteSelectat = (answers[currentIdx] || "").includes(literaOriginala);
+
+            area.innerHTML += `
+                <div class="opt-btn ${ esteSelectat ? 'selected' : '' }" 
+                     onclick="toggleOpt(this, '${literaOriginala}')" id="opt-${literaOriginala}">
+                     <strong>${literaAfisata}.</strong> &nbsp; ${varianta.text}
+                </div>`;
         });
 
         updateNavStyles();
